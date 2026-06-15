@@ -94,7 +94,7 @@ def interactive_shell():
 
     while True:
         try:
-            prompt_html = HTML("<ansibold><ansimagenta>monetrack</ansibold></ansimagenta><ansicyan>&gt;</ansicyan> ")
+            prompt_html = HTML("<ansibold><ansimagenta>monetrack</ansimagenta></ansibold><ansicyan>&gt;</ansicyan> ")
             text = session.prompt(prompt_html)
         except KeyboardInterrupt:
             # Clear line on Ctrl+C and continue
