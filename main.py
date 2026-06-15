@@ -1,5 +1,6 @@
 import datetime
 import shlex
+from typing import Any
 
 import click
 import typer
@@ -26,7 +27,7 @@ console = Console()
 def build_completer() -> NestedCompleter:
     """Build the nested autocomplete structure from current assets and commands."""
     try:
-        assets = db.list_assets()
+        assets = db.list_assets(include_archived=True)
         asset_names = {}
         for a in assets:
             name = a["name"]
@@ -45,6 +46,12 @@ def build_completer() -> NestedCompleter:
             "invest": asset_names,
             "withdraw": asset_names,
             "snapshot": asset_names,
+            "history": {
+                "--asset": asset_names,
+                "-a": asset_names,
+                "--type": {"invest", "withdraw", "snapshot"},
+                "-t": {"invest", "withdraw", "snapshot"},
+            },
             "stats": {
                 "--by": {"asset", "type", "month"},
                 "-b": {"asset", "type", "month"},
@@ -52,11 +59,22 @@ def build_completer() -> NestedCompleter:
                 "-a": asset_names,
                 "--month": None,
                 "-m": None,
+                "--include-archived": None,
+                "-i": None,
             },
             "asset": {
                 "create": None,
-                "list": None,
+                "list": {
+                    "--include-archived": None,
+                    "-i": None,
+                },
+                "delete": asset_names,
+                "rename": asset_names,
+                "archive": asset_names,
+                "unarchive": asset_names,
             },
+            "import": None,
+            "export": None,
             "help": None,
             "exit": None,
             "quit": None,
@@ -76,9 +94,7 @@ def interactive_shell():
 
     while True:
         try:
-            prompt_html = HTML(
-                "<ansibold><ansimagenta>monetrack</ansibold></ansimagenta><ansicyan>&gt;</ansicyan> "
-            )
+            prompt_html = HTML("<ansibold><ansimagenta>monetrack</ansibold></ansimagenta><ansicyan>&gt;</ansicyan> ")
             text = session.prompt(prompt_html)
         except KeyboardInterrupt:
             # Clear line on Ctrl+C and continue
@@ -113,8 +129,12 @@ def interactive_shell():
         try:
             app(args=args, standalone_mode=False)
 
-            # If an asset was created, update the autocomplete database
-            if len(args) >= 2 and args[0] == "asset" and args[1] == "create":
+            # If assets were changed, update the autocomplete database
+            if args[0] == "import" or (
+                len(args) >= 2
+                and args[0] == "asset"
+                and args[1] in ["create", "delete", "archive", "unarchive", "rename"]
+            ):
                 session.completer = build_completer()
         except click.exceptions.Exit:
             pass
@@ -188,9 +208,7 @@ def validate_date_or_exit(date_str: str | None) -> str:
         datetime.date.fromisoformat(date_str)
         return date_str
     except ValueError as err:
-        rprint(
-            f"[red]Error: Invalid date format '{date_str}'. Must be YYYY-MM-DD.[/red]"
-        )
+        rprint(f"[red]Error: Invalid date format '{date_str}'. Must be YYYY-MM-DD.[/red]")
         raise typer.Exit(code=1) from err
 
 
@@ -203,48 +221,40 @@ def asset_create(
         ...,
         help="Unique name of the asset (e.g. 'Bondora Go & Grow', 'Trade Republic MSCI World')",
     ),
-    type: str = typer.Option(
-        "other", "--type", "-t", help="Asset type: p2p, stock, etf, crypto, other"
-    ),
+    type: str = typer.Option("other", "--type", "-t", help="Asset type: p2p, stock, etf, crypto, other"),
     isin: str | None = typer.Option(
         None,
         "--isin",
         "-i",
         help="International Securities Identification Number (for stocks/ETFs)",
     ),
-    wkn: str | None = typer.Option(
-        None, "--wkn", "-w", help="Wertpapierkennnummer / WSN"
-    ),
-    comment: str | None = typer.Option(
-        None, "--comment", "-c", help="Optional description or comments"
-    ),
+    wkn: str | None = typer.Option(None, "--wkn", "-w", help="Wertpapierkennnummer / WSN"),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="Optional description or comments"),
 ):
     """Create a new investment asset to track."""
     valid_types = ["p2p", "stock", "etf", "crypto", "other"]
     if type.lower() not in valid_types:
-        rprint(
-            f"[red]Error: Invalid type '{type}'. Must be one of: {', '.join(valid_types)}[/red]"
-        )
+        rprint(f"[red]Error: Invalid type '{type}'. Must be one of: {', '.join(valid_types)}[/red]")
         raise typer.Exit(code=1) from None
 
     try:
         asset_id = db.create_asset(name, type, isin, wkn, comment)
-        rprint(
-            f"[green]Success: Created asset '[bold]{name}[/bold]' (ID: {asset_id})[/green]"
-        )
+        rprint(f"[green]Success: Created asset '[bold]{name}[/bold]' (ID: {asset_id})[/green]")
     except Exception as e:
         rprint(f"[red]Error: Could not create asset. {e!s}[/red]")
         raise typer.Exit(code=1) from e
 
 
 @asset_app.command(name="list")
-def asset_list():
+def asset_list(
+    include_archived: bool = typer.Option(
+        False, "--include-archived", "-i", help="Include archived assets in the list"
+    ),
+):
     """List all registered investment assets."""
-    assets = db.list_assets()
+    assets = db.list_assets(include_archived=include_archived)
     if not assets:
-        rprint(
-            "[yellow]No assets found. Add one with 'monetrack asset create <name>'[/yellow]"
-        )
+        rprint("[yellow]No assets found. Add one with 'monetrack asset create <name>'[/yellow]")
         return
 
     table = Table(title="Tracked Assets", title_style="bold magenta")
@@ -253,19 +263,88 @@ def asset_list():
     table.add_column("Type", style="yellow")
     table.add_column("ISIN", style="blue")
     table.add_column("WKN", style="blue")
+    if include_archived:
+        table.add_column("Archived", justify="center", style="red")
     table.add_column("Comment", style="dim")
 
     for a in assets:
-        table.add_row(
+        row_cells = [
             str(a["id"]),
             a["name"],
             a["type"].upper(),
             a["isin"] or "-",
             a["wkn"] or "-",
-            a["comment"] or "",
-        )
+        ]
+        if include_archived:
+            row_cells.append("[red]Yes[/red]" if a["is_archived"] else "[dim]No[/dim]")
+        row_cells.append(a["comment"] or "")
+        table.add_row(*row_cells)
 
     console.print(table)
+
+
+@asset_app.command(name="delete")
+def asset_delete(
+    asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN to delete"),
+    confirm: bool = typer.Option(False, "--confirm", "-y", help="Skip confirmation prompt"),
+):
+    """Delete an asset and all its transaction/snapshot history."""
+    asset = resolve_asset_or_exit(asset_query)
+
+    if not confirm:
+        ans = typer.confirm(f"Are you sure you want to permanently delete asset '{asset['name']}' and all its history?")
+        if not ans:
+            rprint("[yellow]Aborted.[/yellow]")
+            return
+
+    try:
+        db.delete_asset(asset["id"])
+        rprint(f"[green]Success: Deleted asset '{asset['name']}'[/green]")
+    except Exception as e:
+        rprint(f"[red]Error deleting asset: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@asset_app.command(name="rename")
+def asset_rename(
+    asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN to rename"),
+    new_name: str = typer.Argument(..., help="New unique name for the asset"),
+):
+    """Rename an asset."""
+    asset = resolve_asset_or_exit(asset_query)
+
+    try:
+        db.rename_asset(asset["id"], new_name)
+        rprint(f"[green]Success: Renamed asset '{asset['name']}' to '{new_name}'[/green]")
+    except Exception as e:
+        rprint(f"[red]Error renaming asset: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@asset_app.command(name="archive")
+def asset_archive(asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN to archive")):
+    """Archive an asset so it is hidden from default stats lists."""
+    asset = resolve_asset_or_exit(asset_query)
+
+    try:
+        db.archive_asset(asset["id"], True)
+        rprint(f"[green]Success: Archived asset '{asset['name']}'[/green]")
+    except Exception as e:
+        rprint(f"[red]Error archiving asset: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@asset_app.command(name="unarchive")
+def asset_unarchive(asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN to unarchive")):
+    """Unarchive an asset to show it in stats again."""
+    asset = resolve_asset_or_exit(asset_query)
+
+    try:
+        db.archive_asset(asset["id"], False)
+        rprint(f"[green]Success: Unarchived asset '{asset['name']}'[/green]")
+    except Exception as e:
+        rprint(f"[red]Error unarchiving asset: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
 
 
 # --- Transaction & Snapshot Commands ---
@@ -275,12 +354,8 @@ def asset_list():
 def invest(
     asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN"),
     amount: float = typer.Argument(..., min=0.01, help="Amount to invest in EUR"),
-    date: str | None = typer.Option(
-        None, "--date", "-d", help="Date of investment (YYYY-MM-DD). Defaults to today."
-    ),
-    comment: str | None = typer.Option(
-        None, "--comment", "-c", help="Optional comment"
-    ),
+    date: str | None = typer.Option(None, "--date", "-d", help="Date of investment (YYYY-MM-DD). Defaults to today."),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="Optional comment"),
 ):
     """Record an investment or deposit of funds into an asset."""
     asset = resolve_asset_or_exit(asset_query)
@@ -300,12 +375,8 @@ def invest(
 def withdraw(
     asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN"),
     amount: float = typer.Argument(..., min=0.01, help="Amount to withdraw in EUR"),
-    date: str | None = typer.Option(
-        None, "--date", "-d", help="Date of withdrawal (YYYY-MM-DD). Defaults to today."
-    ),
-    comment: str | None = typer.Option(
-        None, "--comment", "-c", help="Optional comment"
-    ),
+    date: str | None = typer.Option(None, "--date", "-d", help="Date of withdrawal (YYYY-MM-DD). Defaults to today."),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="Optional comment"),
 ):
     """Record a withdrawal or payout of funds from an asset."""
     asset = resolve_asset_or_exit(asset_query)
@@ -333,18 +404,14 @@ def withdraw(
 @app.command(name="snapshot")
 def snapshot(
     asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN"),
-    value: float = typer.Argument(
-        ..., min=0.0, help="Current total value of this asset in EUR"
-    ),
+    value: float = typer.Argument(..., min=0.0, help="Current total value of this asset in EUR"),
     date: str | None = typer.Option(
         None,
         "--date",
         "-d",
         help="Date of snapshot valuation (YYYY-MM-DD). Defaults to today.",
     ),
-    comment: str | None = typer.Option(
-        None, "--comment", "-c", help="Optional comment"
-    ),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="Optional comment"),
 ):
     """Record a snapshot of the current total valuation of an asset."""
     asset = resolve_asset_or_exit(asset_query)
@@ -366,25 +433,22 @@ def snapshot(
 
 @app.command(name="stats")
 def stats(
-    by: str = typer.Option(
-        "asset", "--by", "-b", help="Grouping level: 'asset', 'type', or 'month'"
-    ),
+    by: str = typer.Option("asset", "--by", "-b", help="Grouping level: 'asset', 'type', or 'month'"),
     asset_query: str | None = typer.Option(
         None,
         "--asset",
         "-a",
         help="Filter statistics to a specific asset (ID, Name, ISIN, WKN)",
     ),
-    month: str | None = typer.Option(
-        None, "--month", "-m", help="Filter statistics to a specific month (YYYY-MM)"
+    month: str | None = typer.Option(None, "--month", "-m", help="Filter statistics to a specific month (YYYY-MM)"),
+    include_archived: bool = typer.Option(
+        False, "--include-archived", "-i", help="Include archived assets in statistics"
     ),
 ):
     """View portfolio statistics, asset breakdowns, and monthly earnings."""
     valid_groupings = ["asset", "type", "month"]
     if by.lower() not in valid_groupings:
-        rprint(
-            f"[red]Error: Invalid grouping '{by}'. Must be one of: {', '.join(valid_groupings)}[/red]"
-        )
+        rprint(f"[red]Error: Invalid grouping '{by}'. Must be one of: {', '.join(valid_groupings)}[/red]")
         raise typer.Exit(code=1) from None
 
     target_asset = None
@@ -400,17 +464,101 @@ def stats(
         if target_asset:
             show_single_asset_stats(target_asset)
         else:
-            show_assets_stats_table(month_filter=month)
+            show_assets_stats_table(month_filter=month, include_archived=include_archived)
 
     elif by.lower() == "type":
         if target_asset:
-            rprint(
-                "[yellow]Warning: Asset filter is ignored when grouping by type.[/yellow]"
-            )
-        show_type_stats_table()
+            rprint("[yellow]Warning: Asset filter is ignored when grouping by type.[/yellow]")
+        show_type_stats_table(include_archived=include_archived)
 
     elif by.lower() == "month":
-        show_monthly_stats_table(target_asset=target_asset, month_filter=month)
+        show_monthly_stats_table(target_asset=target_asset, month_filter=month, include_archived=include_archived)
+
+
+@app.command(name="history")
+def history(
+    asset_query: str | None = typer.Option(
+        None, "--asset", "-a", help="Filter history to a specific asset (ID, Name, ISIN, WKN)"
+    ),
+    event_type: str | None = typer.Option(
+        None, "--type", "-t", help="Filter by event type: invest, withdraw, snapshot"
+    ),
+):
+    """View a chronological history of transactions and snapshots."""
+    asset_id = None
+    if asset_query:
+        asset = resolve_asset_or_exit(asset_query)
+        asset_id = asset["id"]
+
+    if event_type:
+        event_type = event_type.lower()
+        if event_type not in ["invest", "withdraw", "snapshot"]:
+            rprint(f"[red]Error: Invalid type '{event_type}'. Must be one of: invest, withdraw, snapshot[/red]")
+            raise typer.Exit(code=1) from None
+
+    events = db.get_history(asset_id, event_type)
+    if not events:
+        rprint("[yellow]No history events found matching the criteria.[/yellow]")
+        return
+
+    table = Table(title="Portfolio History", title_style="bold magenta")
+    table.add_column("Timestamp", justify="center", style="cyan")
+    table.add_column("Asset Name", style="bold white")
+    table.add_column("Event Type", justify="center")
+    table.add_column("Value / Amount", justify="right")
+    table.add_column("Comment", style="dim")
+
+    for ev in events:
+        ev_type = ev["event_type"].upper()
+        if ev_type == "INVEST":
+            ev_type_formatted = "[green]INVEST[/green]"
+            val_formatted = f"[green]€{ev['value']:,.2f}[/green]"
+        elif ev_type == "WITHDRAW":
+            ev_type_formatted = "[red]WITHDRAW[/red]"
+            val_formatted = f"[red]€{ev['value']:,.2f}[/red]"
+        else:
+            ev_type_formatted = "[yellow]SNAPSHOT[/yellow]"
+            val_formatted = f"€{ev['value']:,.2f}"
+
+        table.add_row(ev["timestamp"], ev["asset_name"], ev_type_formatted, val_formatted, ev["comment"] or "")
+
+    console.print(table)
+
+
+@app.command(name="export")
+def export(directory: str = typer.Argument(..., help="Directory where CSV files will be saved")):
+    """Export all assets, transactions, and snapshots to CSV files."""
+    from pathlib import Path
+
+    export_dir = Path(directory)
+    try:
+        db.export_to_csv(export_dir)
+        rprint(f"[green]Success: Data exported successfully to CSVs in '{export_dir.absolute()}'[/green]")
+    except Exception as e:
+        rprint(f"[red]Error during export: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@app.command(name="import")
+def import_cmd(directory: str = typer.Argument(..., help="Directory containing CSV files to import")):
+    """Import assets, transactions, and snapshots from CSV files."""
+    from pathlib import Path
+
+    import_dir = Path(directory)
+
+    if not import_dir.exists() or not import_dir.is_dir():
+        rprint(f"[red]Error: Import directory '{import_dir}' does not exist or is not a directory.[/red]")
+        raise typer.Exit(code=1) from None
+
+    try:
+        stats_data = db.import_from_csv(import_dir)
+        rprint("[green]Success: Import completed successfully.[/green]")
+        rprint(f" - Imported assets: [bold]{stats_data['assets']}[/bold]")
+        rprint(f" - Imported transactions: [bold]{stats_data['transactions']}[/bold]")
+        rprint(f" - Imported snapshots: [bold]{stats_data['snapshots']}[/bold]")
+    except Exception as e:
+        rprint(f"[red]Error during import: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
 
 
 # --- Sub-Renderers ---
@@ -447,9 +595,9 @@ def show_single_asset_stats(asset):
     rprint("[dim]--------------------------------------------------[/dim]\n")
 
 
-def show_assets_stats_table(month_filter: str | None = None):
+def show_assets_stats_table(month_filter: str | None = None, include_archived: bool = False):
     """Show list of assets with performance statistics."""
-    assets = db.list_assets()
+    assets = db.list_assets(include_archived=include_archived)
     if not assets:
         rprint("[yellow]No assets tracked yet.[/yellow]")
         return
@@ -477,7 +625,7 @@ def show_assets_stats_table(month_filter: str | None = None):
         for a in assets:
             m_stats = db.get_asset_monthly_stats(a["id"], month_filter)
 
-            # Skip if there's no starting valuation, ending valuation, and no transaction flow in the month
+            # Skip if starting/ending valuation and flows are all 0
             if (
                 m_stats["valuation_start"] == 0
                 and m_stats["valuation_end"] == 0
@@ -524,7 +672,7 @@ def show_assets_stats_table(month_filter: str | None = None):
         table.add_column("ROI", justify="right")
         table.add_column("Last Valuation", justify="center")
 
-        glob = db.get_global_summary()
+        glob = db.get_global_summary(include_archived=include_archived)
 
         for a in assets:
             stats = db.get_asset_stats(a["id"])
@@ -548,23 +696,21 @@ def show_assets_stats_table(month_filter: str | None = None):
     console.print(table)
 
 
-def show_type_stats_table():
+def show_type_stats_table(include_archived: bool = False):
     """Show performance aggregated by asset type."""
-    type_stats = db.get_type_stats()
+    type_stats = db.get_type_stats(include_archived=include_archived)
     if not type_stats:
         rprint("[yellow]No assets tracked yet.[/yellow]")
         return
 
-    table = Table(
-        title="Performance by Asset Type", title_style="bold magenta", show_footer=True
-    )
+    table = Table(title="Performance by Asset Type", title_style="bold magenta", show_footer=True)
     table.add_column("Asset Type", style="bold yellow", footer="Total")
     table.add_column("Net Invested", justify="right")
     table.add_column("Current Value", justify="right")
     table.add_column("Earnings", justify="right")
     table.add_column("ROI", justify="right")
 
-    glob = db.get_global_summary()
+    glob = db.get_global_summary(include_archived=include_archived)
 
     for t, data in type_stats.items():
         table.add_row(
@@ -582,15 +728,91 @@ def show_type_stats_table():
 
     console.print(table)
 
+    # Asset Allocation Bar Chart using block characters
+    total_val = sum(data["current_value"] for data in type_stats.values())
+    if total_val > 0.01:
+        rprint("\n[bold magenta]Asset Type Allocation Chart[/bold magenta]")
+        sorted_types = sorted(type_stats.items(), key=lambda item: item[1]["current_value"], reverse=True)
+        for t, data in sorted_types:
+            share = data["current_value"] / total_val
+            pct = share * 100
+            filled_len = round(share * 30)
+            bar = "[magenta]█[/magenta]" * filled_len + "[dim]░[/dim]" * (30 - filled_len)
+            rprint(f"  {t.upper():<8} : {bar} {pct:.1f}% ({format_balance(data['current_value'])})")
+
+
+def render_vertical_bar_chart(monthly_stats: list[dict[str, Any]], height: int = 6) -> str:
+    """Render a vertical bar chart of monthly earnings."""
+    if not monthly_stats:
+        return ""
+
+    earnings_list = [m["earnings"] for m in monthly_stats]
+    months = [m["month"] for m in monthly_stats]
+
+    max_val = max(abs(e) for e in earnings_list)
+    if max_val <= 0.01:
+        max_val = 1.0
+
+    rows = []
+
+    # Positive half
+    for y in range(height, 0, -1):
+        row_chars = []
+        for e in earnings_list:
+            if e > 0:
+                val_h = round((e / max_val) * height)
+                row_chars.append("[green]█[/green]" if val_h >= y else " ")
+            else:
+                row_chars.append(" ")
+        rows.append("  " + "  ".join(row_chars))
+
+    # Baseline
+    baseline_chars = []
+    for e in earnings_list:
+        if e > 0:
+            baseline_chars.append("┴")
+        elif e < 0:
+            baseline_chars.append("┬")
+        else:
+            baseline_chars.append("─")
+    rows.append("──" + "──".join(baseline_chars))
+
+    # Negative half
+    for y in range(1, height + 1):
+        row_chars = []
+        for e in earnings_list:
+            if e < 0:
+                val_h = round((abs(e) / max_val) * height)
+                row_chars.append("[red]█[/red]" if val_h >= y else " ")
+            else:
+                row_chars.append(" ")
+        rows.append("  " + "  ".join(row_chars))
+
+    # Slanted/vertical labels
+    label_rows = ["", "", "", "", ""]
+    for m in months:
+        y_part = m[2:4]
+        m_part = m[5:7]
+        label_rows[0] += f" {y_part[0]} "
+        label_rows[1] += f" {y_part[1]} "
+        label_rows[2] += " - "
+        label_rows[3] += f" {m_part[0]} "
+        label_rows[4] += f" {m_part[1]} "
+
+    for lr in label_rows:
+        rows.append(" " + lr)
+
+    return "\n".join(rows)
+
 
 def show_monthly_stats_table(
-    target_asset: dict | None = None, month_filter: str | None = None
+    target_asset: dict | None = None, month_filter: str | None = None, include_archived: bool = False
 ):
     """Show chronological monthly breakdown of earnings and flow."""
     asset_id = target_asset["id"] if target_asset else None
     name = target_asset["name"] if target_asset else "Overall Portfolio"
 
-    monthly_stats = db.get_monthly_stats(asset_id)
+    monthly_stats = db.get_monthly_stats(asset_id, include_archived=include_archived)
     if not monthly_stats:
         rprint("[yellow]No transaction or snapshot history found.[/yellow]")
         return
@@ -640,6 +862,13 @@ def show_monthly_stats_table(
     table.columns[6].footer = format_earnings(tot_earnings)
 
     console.print(table)
+
+    # Draw vertical bar chart of monthly earnings
+    rprint("\n[bold magenta]Monthly Earnings History[/bold magenta]")
+    chart_str = render_vertical_bar_chart(monthly_stats)
+    if chart_str:
+        rprint(chart_str)
+        rprint("")
 
 
 # Entry point

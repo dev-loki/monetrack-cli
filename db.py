@@ -37,9 +37,18 @@ def init_db():
             type TEXT CHECK(type IN ('p2p', 'stock', 'etf', 'crypto', 'other')) NOT NULL DEFAULT 'other',
             isin TEXT,
             wkn TEXT,
-            comment TEXT
+            comment TEXT,
+            is_archived INTEGER DEFAULT 0 CHECK(is_archived IN (0, 1))
         );
         """)
+
+        # Database migration: add is_archived column if it doesn't exist
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(assets)")
+        columns = [row["name"] for row in cursor.fetchall()]
+        if "is_archived" not in columns:
+            conn.execute("ALTER TABLE assets ADD COLUMN is_archived INTEGER DEFAULT 0 CHECK(is_archived IN (0, 1))")
+
         conn.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,10 +97,13 @@ def create_asset(
         return cursor.lastrowid
 
 
-def list_assets() -> list[dict[str, Any]]:
+def list_assets(include_archived: bool = False) -> list[dict[str, Any]]:
     """Return all registered assets."""
     with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM assets ORDER BY name ASC").fetchall()
+        if include_archived:
+            rows = conn.execute("SELECT * FROM assets ORDER BY name ASC").fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM assets WHERE is_archived = 0 ORDER BY name ASC").fetchall()
         return [dict(row) for row in rows]
 
 
@@ -100,9 +112,7 @@ def find_asset(query: str) -> dict[str, Any] | None:
     with get_connection() as conn:
         # Check if query is an integer ID
         if query.isdigit():
-            row = conn.execute(
-                "SELECT * FROM assets WHERE id = ?", (int(query),)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM assets WHERE id = ?", (int(query),)).fetchone()
             if row:
                 return dict(row)
 
@@ -115,9 +125,7 @@ def find_asset(query: str) -> dict[str, Any] | None:
             return dict(row)
 
         # Fuzzy match on name if exact match fails
-        row = conn.execute(
-            "SELECT * FROM assets WHERE name LIKE ? LIMIT 1", (f"%{query}%",)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM assets WHERE name LIKE ? LIMIT 1", (f"%{query}%",)).fetchone()
         if row:
             return dict(row)
 
@@ -147,9 +155,7 @@ def add_transaction(
         return cursor.lastrowid
 
 
-def add_snapshot(
-    asset_id: int, value: float, timestamp: str, comment: str | None = None
-) -> int:
+def add_snapshot(asset_id: int, value: float, timestamp: str, comment: str | None = None) -> int:
     """Log a valuation snapshot."""
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -216,9 +222,9 @@ def get_asset_stats(asset_id: int) -> dict[str, Any]:
         }
 
 
-def get_global_summary() -> dict[str, Any]:
+def get_global_summary(include_archived: bool = False) -> dict[str, Any]:
     """Calculate overall statistics across all assets."""
-    assets = list_assets()
+    assets = list_assets(include_archived=include_archived)
     total_net_invested = 0.0
     total_current_value = 0.0
     total_earnings = 0.0
@@ -233,9 +239,7 @@ def get_global_summary() -> dict[str, Any]:
         total_invested += stats["total_invested"]
         total_withdrawn += stats["total_withdrawn"]
 
-    total_roi = (
-        (total_earnings / total_net_invested * 100.0) if total_net_invested > 0 else 0.0
-    )
+    total_roi = (total_earnings / total_net_invested * 100.0) if total_net_invested > 0 else 0.0
 
     return {
         "net_invested": total_net_invested,
@@ -258,25 +262,24 @@ def get_next_month(yyyy_mm: str) -> str:
 
 
 def get_valuation_before(
-    conn: sqlite3.Connection, asset_id: int | None, before_timestamp: str
+    conn: sqlite3.Connection, asset_id: int | None, before_timestamp: str, include_archived: bool = False
 ) -> float:
     """Calculate the valuation of asset(s) at/before a specific timestamp."""
     if asset_id is not None:
         return _get_single_asset_valuation_before(conn, asset_id, before_timestamp)
 
     # Calculate sum of valuations for all assets
-    assets = conn.execute("SELECT id FROM assets").fetchall()
+    if include_archived:
+        assets = conn.execute("SELECT id FROM assets").fetchall()
+    else:
+        assets = conn.execute("SELECT id FROM assets WHERE is_archived = 0").fetchall()
     total_val = 0.0
     for asset in assets:
-        total_val += _get_single_asset_valuation_before(
-            conn, asset["id"], before_timestamp
-        )
+        total_val += _get_single_asset_valuation_before(conn, asset["id"], before_timestamp)
     return total_val
 
 
-def _get_single_asset_valuation_before(
-    conn: sqlite3.Connection, asset_id: int, before_timestamp: str
-) -> float:
+def _get_single_asset_valuation_before(conn: sqlite3.Connection, asset_id: int, before_timestamp: str) -> float:
     """Helper to calculate a single asset's valuation at/before a specific timestamp."""
     row = conn.execute(
         "SELECT value, timestamp FROM snapshots WHERE asset_id = ? AND "
@@ -307,7 +310,7 @@ def _get_single_asset_valuation_before(
         return flow
 
 
-def get_all_months(conn: sqlite3.Connection, asset_id: int | None = None) -> list[str]:
+def get_all_months(conn: sqlite3.Connection, asset_id: int | None = None, include_archived: bool = False) -> list[str]:
     """Get list of all months between first transaction/snapshot and current month."""
     if asset_id is not None:
         row = conn.execute(
@@ -321,13 +324,24 @@ def get_all_months(conn: sqlite3.Connection, asset_id: int | None = None) -> lis
             (asset_id, asset_id),
         ).fetchone()
     else:
-        row = conn.execute("""
-            SELECT MIN(min_t) as global_min, MAX(max_t) as global_max FROM (
-                SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM transactions
-                UNION ALL
-                SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM snapshots
-            )
-        """).fetchone()
+        if include_archived:
+            row = conn.execute("""
+                SELECT MIN(min_t) as global_min, MAX(max_t) as global_max FROM (
+                    SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM transactions
+                    UNION ALL
+                    SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM snapshots
+                )
+            """).fetchone()
+        else:
+            row = conn.execute("""
+                SELECT MIN(min_t) as global_min, MAX(max_t) as global_max FROM (
+                    SELECT MIN(t.timestamp) as min_t, MAX(t.timestamp) as max_t FROM transactions t
+                    JOIN assets a ON t.asset_id = a.id WHERE a.is_archived = 0
+                    UNION ALL
+                    SELECT MIN(s.timestamp) as min_t, MAX(s.timestamp) as max_t FROM snapshots s
+                    JOIN assets a ON s.asset_id = a.id WHERE a.is_archived = 0
+                )
+            """).fetchone()
 
     if not row or not row["global_min"]:
         return []
@@ -349,10 +363,10 @@ def get_all_months(conn: sqlite3.Connection, asset_id: int | None = None) -> lis
     return months
 
 
-def get_monthly_stats(asset_id: int | None = None) -> list[dict[str, Any]]:
+def get_monthly_stats(asset_id: int | None = None, include_archived: bool = False) -> list[dict[str, Any]]:
     """Aggregate net invested, valuation, and earnings on a month-by-month basis."""
     with get_connection() as conn:
-        months = get_all_months(conn, asset_id)
+        months = get_all_months(conn, asset_id, include_archived)
         stats_list = []
 
         for month in months:
@@ -360,8 +374,8 @@ def get_monthly_stats(asset_id: int | None = None) -> list[dict[str, Any]]:
             next_m = get_next_month(month)
             end_time = f"{next_m}-01"
 
-            v_start = get_valuation_before(conn, asset_id, start_time)
-            v_end = get_valuation_before(conn, asset_id, end_time)
+            v_start = get_valuation_before(conn, asset_id, start_time, include_archived)
+            v_end = get_valuation_before(conn, asset_id, end_time, include_archived)
 
             if asset_id is not None:
                 invest = (
@@ -382,21 +396,42 @@ def get_monthly_stats(asset_id: int | None = None) -> list[dict[str, Any]]:
                     or 0.0
                 )
             else:
-                invest = (
-                    conn.execute(
-                        "SELECT SUM(amount) FROM transactions WHERE type = 'invest' AND timestamp >= ? AND timestamp < ?",
-                        (start_time, end_time),
-                    ).fetchone()[0]
-                    or 0.0
-                )
+                if include_archived:
+                    invest = (
+                        conn.execute(
+                            "SELECT SUM(amount) FROM transactions WHERE type = 'invest' AND "
+                            "timestamp >= ? AND timestamp < ?",
+                            (start_time, end_time),
+                        ).fetchone()[0]
+                        or 0.0
+                    )
 
-                withdraw = (
-                    conn.execute(
-                        "SELECT SUM(amount) FROM transactions WHERE type = 'withdraw' AND timestamp >= ? AND timestamp < ?",
-                        (start_time, end_time),
-                    ).fetchone()[0]
-                    or 0.0
-                )
+                    withdraw = (
+                        conn.execute(
+                            "SELECT SUM(amount) FROM transactions WHERE type = 'withdraw' AND "
+                            "timestamp >= ? AND timestamp < ?",
+                            (start_time, end_time),
+                        ).fetchone()[0]
+                        or 0.0
+                    )
+                else:
+                    invest = (
+                        conn.execute(
+                            "SELECT SUM(t.amount) FROM transactions t JOIN assets a ON t.asset_id = a.id "
+                            "WHERE t.type = 'invest' AND a.is_archived = 0 AND t.timestamp >= ? AND t.timestamp < ?",
+                            (start_time, end_time),
+                        ).fetchone()[0]
+                        or 0.0
+                    )
+
+                    withdraw = (
+                        conn.execute(
+                            "SELECT SUM(t.amount) FROM transactions t JOIN assets a ON t.asset_id = a.id "
+                            "WHERE t.type = 'withdraw' AND a.is_archived = 0 AND t.timestamp >= ? AND t.timestamp < ?",
+                            (start_time, end_time),
+                        ).fetchone()[0]
+                        or 0.0
+                    )
 
             net_flow = invest - withdraw
             earnings = v_end - v_start - net_flow
@@ -416,9 +451,9 @@ def get_monthly_stats(asset_id: int | None = None) -> list[dict[str, Any]]:
         return stats_list
 
 
-def get_type_stats() -> dict[str, dict[str, Any]]:
+def get_type_stats(include_archived: bool = False) -> dict[str, dict[str, Any]]:
     """Aggregate stats grouped by asset type (p2p, stock, etf, crypto, other)."""
-    assets = list_assets()
+    assets = list_assets(include_archived=include_archived)
     by_type = {}
 
     for asset in assets:
@@ -441,11 +476,7 @@ def get_type_stats() -> dict[str, dict[str, Any]]:
         by_type[t]["total_withdrawn"] += stats["total_withdrawn"]
 
     for _t, data in by_type.items():
-        data["roi"] = (
-            (data["earnings"] / data["net_invested"] * 100.0)
-            if data["net_invested"] > 0
-            else 0.0
-        )
+        data["roi"] = (data["earnings"] / data["net_invested"] * 100.0) if data["net_invested"] > 0 else 0.0
 
     return by_type
 
@@ -490,3 +521,182 @@ def get_asset_monthly_stats(asset_id: int, month: str) -> dict[str, Any]:
             "net_flow": net_flow,
             "earnings": earnings,
         }
+
+
+def delete_asset(asset_id: int):
+    """Delete an asset and all associated transactions/snapshots."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
+        conn.commit()
+
+
+def rename_asset(asset_id: int, new_name: str):
+    """Rename an asset."""
+    with get_connection() as conn:
+        conn.execute("UPDATE assets SET name = ? WHERE id = ?", (new_name, asset_id))
+        conn.commit()
+
+
+def archive_asset(asset_id: int, is_archived: bool):
+    """Archive or unarchive an asset."""
+    val = 1 if is_archived else 0
+    with get_connection() as conn:
+        conn.execute("UPDATE assets SET is_archived = ? WHERE id = ?", (val, asset_id))
+        conn.commit()
+
+
+def get_history(asset_id: int | None = None, event_type: str | None = None) -> list[dict[str, Any]]:
+    """Retrieve chronological history of transactions and snapshots."""
+    tx_where = []
+    snap_where = []
+    params = []
+
+    if asset_id is not None:
+        tx_where.append("t.asset_id = ?")
+        snap_where.append("s.asset_id = ?")
+        params.extend([asset_id, asset_id])
+
+    if event_type is not None:
+        if event_type == "snapshot":
+            tx_where.append("1=0")
+        else:
+            tx_where.append("t.type = ?")
+            params.append(event_type)
+            snap_where.append("1=0")
+
+    tx_where_str = " AND ".join(tx_where)
+    tx_where_str = f"WHERE {tx_where_str}" if tx_where_str else ""
+
+    snap_where_str = " AND ".join(snap_where)
+    snap_where_str = f"WHERE {snap_where_str}" if snap_where_str else ""
+
+    query = f"""
+        SELECT 'transaction' as source, t.id as event_id, t.timestamp, t.type as event_type,
+               t.amount as value, t.comment, a.name as asset_name
+        FROM transactions t
+        JOIN assets a ON t.asset_id = a.id
+        {tx_where_str}
+        UNION ALL
+        SELECT 'snapshot' as source, s.id as event_id, s.timestamp, 'snapshot' as event_type,
+               s.value, s.comment, a.name as asset_name
+        FROM snapshots s
+        JOIN assets a ON s.asset_id = a.id
+        {snap_where_str}
+        ORDER BY timestamp ASC, source DESC, event_id ASC
+    """
+
+    with get_connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def export_to_csv(export_dir: Path):
+    """Export all database data to CSV files in the specified directory."""
+    import csv
+
+    export_dir.mkdir(parents=True, exist_ok=True)
+    with get_connection() as conn:
+        # Export assets
+        assets = conn.execute("SELECT * FROM assets").fetchall()
+        with open(export_dir / "assets.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "name", "type", "isin", "wkn", "comment", "is_archived"])
+            for row in assets:
+                writer.writerow(
+                    [
+                        row["id"],
+                        row["name"],
+                        row["type"],
+                        row["isin"] or "",
+                        row["wkn"] or "",
+                        row["comment"] or "",
+                        row["is_archived"],
+                    ]
+                )
+
+        # Export transactions
+        txs = conn.execute("SELECT * FROM transactions").fetchall()
+        with open(export_dir / "transactions.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "asset_id", "timestamp", "type", "amount", "comment"])
+            for row in txs:
+                writer.writerow(
+                    [row["id"], row["asset_id"], row["timestamp"], row["type"], row["amount"], row["comment"] or ""]
+                )
+
+        # Export snapshots
+        snaps = conn.execute("SELECT * FROM snapshots").fetchall()
+        with open(export_dir / "snapshots.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "asset_id", "timestamp", "value", "comment"])
+            for row in snaps:
+                writer.writerow([row["id"], row["asset_id"], row["timestamp"], row["value"], row["comment"] or ""])
+
+
+def import_from_csv(import_dir: Path) -> dict[str, int]:
+    """Import assets, transactions, and snapshots from CSVs in the specified directory."""
+    import csv
+
+    assets_file = import_dir / "assets.csv"
+    txs_file = import_dir / "transactions.csv"
+    snaps_file = import_dir / "snapshots.csv"
+
+    asset_id_map = {}
+    imported_assets = 0
+    imported_txs = 0
+    imported_snaps = 0
+
+    # 1. Import assets
+    if assets_file.exists():
+        with open(assets_file, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                name = row["name"]
+                existing = find_asset(name)
+                if existing:
+                    new_id = existing["id"]
+                else:
+                    isin = row.get("isin") or None
+                    wkn = row.get("wkn") or None
+                    comment = row.get("comment") or None
+                    is_archived = int(row.get("is_archived", 0))
+
+                    new_id = create_asset(name=name, asset_type=row["type"], isin=isin, wkn=wkn, comment=comment)
+                    if is_archived:
+                        archive_asset(new_id, True)
+                    imported_assets += 1
+                asset_id_map[int(row["id"])] = new_id
+
+    # 2. Import transactions
+    if txs_file.exists():
+        with open(txs_file, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                old_asset_id = int(row["asset_id"])
+                new_asset_id = asset_id_map.get(old_asset_id)
+                if new_asset_id is not None:
+                    comment = row.get("comment") or None
+                    add_transaction(
+                        asset_id=new_asset_id,
+                        tx_type=row["type"],
+                        amount=float(row["amount"]),
+                        timestamp=row["timestamp"],
+                        comment=comment,
+                    )
+                    imported_txs += 1
+
+    # 3. Import snapshots
+    if snaps_file.exists():
+        with open(snaps_file, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                old_asset_id = int(row["asset_id"])
+                new_asset_id = asset_id_map.get(old_asset_id)
+                if new_asset_id is not None:
+                    comment = row.get("comment") or None
+                    add_snapshot(
+                        asset_id=new_asset_id, value=float(row["value"]), timestamp=row["timestamp"], comment=comment
+                    )
+                    imported_snaps += 1
+
+    return {"assets": imported_assets, "transactions": imported_txs, "snapshots": imported_snaps}
