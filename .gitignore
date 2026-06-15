@@ -31,3 +31,6 @@ env/
 # Databases
 *.db
 *.sqlite3
+
+# Excel Data Files
+*.xlsx
