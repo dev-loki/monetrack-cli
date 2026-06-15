@@ -15,14 +15,20 @@ dependencies = [
 
 
 [project.scripts]
-monetrack = "main:app"
+monetrack = "monetrack.application.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["main", "db"]
+packages = [
+    "monetrack",
+    "monetrack.domain",
+    "monetrack.ports",
+    "monetrack.services",
+    "monetrack.application"
+]
 
 [dependency-groups]
 dev = [
