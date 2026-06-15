@@ -1,7 +1,6 @@
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any
 
 from monetrack.domain.models import (
     Asset,
@@ -23,6 +22,12 @@ class SQLiteDatabaseAdapter:
 
     def _resolve_db_path(self) -> Path:
         """Resolve the database storage path adhering to XDG specification."""
+        env_path = os.environ.get("MONETRACK_DB_PATH")
+        if env_path:
+            p = Path(env_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            return p
+
         xdg_data_home = os.environ.get("XDG_DATA_HOME")
         if xdg_data_home:
             base_dir = Path(xdg_data_home)
@@ -596,5 +601,5 @@ class SQLiteDatabaseAdapter:
                 for row in rows
             ]
 
-    def get_raw_connection(self) -> Any:
+    def get_raw_connection(self) -> sqlite3.Connection:
         return self.get_connection()

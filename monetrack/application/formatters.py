@@ -1,4 +1,4 @@
-from typing import Any
+from monetrack.domain.models import MonthlyStats
 
 
 def format_balance(val: float) -> str:
@@ -28,7 +28,7 @@ def format_roi(val: float) -> str:
         return "[dim]0.00%[/dim]"
 
 
-def render_vertical_bar_chart(monthly_stats: list[Any], height: int = 6) -> str:
+def render_vertical_bar_chart(monthly_stats: list[MonthlyStats], height: int = 6) -> str:
     """Render a vertical bar chart of monthly earnings."""
     if not monthly_stats:
         return ""

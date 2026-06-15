@@ -34,3 +34,8 @@ env/
 
 # Excel Data Files
 *.xlsx
+
+# Coverage and caches
+.coverage
+.pytest_cache/
+.ruff_cache/

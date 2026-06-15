@@ -1,4 +1,5 @@
-from typing import Any, Protocol
+import sqlite3
+from typing import Protocol
 
 from monetrack.domain.models import (
     Asset,
@@ -72,6 +73,6 @@ class DatabasePort(Protocol):
         """Get chronological transaction and snapshot history."""
         ...
 
-    def get_raw_connection(self) -> Any:
+    def get_raw_connection(self) -> sqlite3.Connection:
         """Return raw database connection for transactions/migrations."""
         ...
