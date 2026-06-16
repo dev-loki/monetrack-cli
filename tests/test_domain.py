@@ -1,11 +1,11 @@
-from monetrack.domain.models import Asset, Snapshot, Transaction
+from monetrack.domain.models import Asset, AssetType, Snapshot, Transaction, TransactionType
 
 
 def test_asset_creation() -> None:
     asset = Asset(
         id=1,
         name="Test Asset",
-        type="stock",
+        type=AssetType.STOCK,
         isin="IE00B4L5Y983",
         wkn="A0RPWH",
         comment="Test comment",
@@ -13,7 +13,7 @@ def test_asset_creation() -> None:
     )
     assert asset.id == 1
     assert asset.name == "Test Asset"
-    assert asset.type == "stock"
+    assert asset.type == AssetType.STOCK
     assert asset.isin == "IE00B4L5Y983"
     assert asset.wkn == "A0RPWH"
     assert asset.comment == "Test comment"
@@ -25,14 +25,14 @@ def test_transaction_creation() -> None:
         id=1,
         asset_id=1,
         timestamp="2025-01-01",
-        type="invest",
+        type=TransactionType.INVEST,
         amount=100.0,
         comment="Tx comment",
     )
     assert tx.id == 1
     assert tx.asset_id == 1
     assert tx.timestamp == "2025-01-01"
-    assert tx.type == "invest"
+    assert tx.type == TransactionType.INVEST
     assert tx.amount == 100.0
     assert tx.comment == "Tx comment"
 

@@ -1,14 +1,12 @@
-import sqlite3
 from typing import Protocol
 
 from monetrack.domain.models import (
     Asset,
-    AssetStats,
-    GlobalSummary,
+    AssetType,
     HistoryEvent,
-    MonthlyStats,
     Snapshot,
     Transaction,
+    TransactionType,
 )
 
 
@@ -49,26 +47,6 @@ class DatabasePort(Protocol):
         """Add a valuation snapshot."""
         ...
 
-    def get_asset_stats(self, asset_id: int) -> AssetStats:
-        """Calculate performance stats for a single asset."""
-        ...
-
-    def get_global_summary(self, include_archived: bool = False) -> GlobalSummary:
-        """Calculate overall statistics across all assets."""
-        ...
-
-    def get_monthly_stats(self, asset_id: int | None = None, include_archived: bool = False) -> list[MonthlyStats]:
-        """Aggregate stats on a month-by-month basis."""
-        ...
-
-    def get_asset_monthly_stats(self, asset_id: int, month: str) -> MonthlyStats:
-        """Calculate monthly stats for a single asset."""
-        ...
-
-    def get_type_stats(self, include_archived: bool = False) -> dict[str, dict[str, float]]:
-        """Aggregate stats grouped by asset type."""
-        ...
-
     def get_history(self, asset_id: int | None = None, event_type: str | None = None) -> list[HistoryEvent]:
         """Get chronological transaction and snapshot history."""
         ...
@@ -77,7 +55,7 @@ class DatabasePort(Protocol):
         self,
         asset_id: int,
         name: str | None = None,
-        type: str | None = None,
+        type: AssetType | None = None,
         isin: str | None = None,
         wkn: str | None = None,
         comment: str | None = None,
@@ -91,7 +69,7 @@ class DatabasePort(Protocol):
         amount: float | None = None,
         timestamp: str | None = None,
         comment: str | None = None,
-        type: str | None = None,
+        type: TransactionType | None = None,
     ) -> None:
         """Update an existing transaction."""
         ...
@@ -106,6 +84,10 @@ class DatabasePort(Protocol):
         """Update an existing snapshot."""
         ...
 
-    def get_raw_connection(self) -> sqlite3.Connection:
-        """Return raw database connection for transactions/migrations."""
+    def list_transactions(self) -> list[Transaction]:
+        """List all transactions."""
+        ...
+
+    def list_snapshots(self) -> list[Snapshot]:
+        """List all snapshots."""
         ...

@@ -126,3 +126,41 @@ def test_service_update_operations(portfolio_service: PortfolioService) -> None:
     stats = portfolio_service.get_asset_stats(a_id)
     assert stats.net_invested == 150.0
     assert stats.current_value == 160.0
+
+
+def test_service_valuation_scenarios_coverage(portfolio_service: PortfolioService) -> None:
+    # 1. Coverage for December next month (line 181)
+    a_id = portfolio_service.create_asset(name="Dec Asset", asset_type="stock")
+    portfolio_service.add_transaction(a_id, "invest", 100.0, "2025-12-15")
+    stats_dec = portfolio_service.get_monthly_stats(asset_id=a_id)
+    assert len(stats_dec) == 1
+    assert stats_dec[0].month == "2025-12"
+
+    # 2. Coverage for:
+    #   - Transaction after snapshot but before end date (lines 207-210)
+    #   - Transaction after end date breaking loop (lines 212-213)
+    b_id = portfolio_service.create_asset(name="Scenarios Asset", asset_type="crypto")
+    portfolio_service.add_snapshot(b_id, 200.0, "2025-01-10")
+    portfolio_service.add_transaction(b_id, "invest", 50.0, "2025-01-15")
+    portfolio_service.add_transaction(b_id, "withdraw", 10.0, "2025-01-20")
+    portfolio_service.add_transaction(b_id, "invest", 30.0, "2025-02-05")
+
+    stats_scenarios = portfolio_service.get_monthly_stats(asset_id=b_id)
+    assert len(stats_scenarios) >= 1
+    jan_stats = next(s for s in stats_scenarios if s.month == "2025-01")
+    assert jan_stats.valuation_end == 240.0
+
+    # 3. Coverage for:
+    #   - Withdraw when no snapshot exists (lines 220-221)
+    c_id = portfolio_service.create_asset(name="Withdraw No Snap Asset", asset_type="other")
+    portfolio_service.add_transaction(c_id, "withdraw", 20.0, "2025-01-10")
+    stats_withdraw_no_snap = portfolio_service.get_monthly_stats(asset_id=c_id)
+    jan_withdraw_stats = next(s for s in stats_withdraw_no_snap if s.month == "2025-01")
+    assert jan_withdraw_stats.valuation_end == -20.0
+
+    # 4. Coverage for:
+    #   - Archived asset skipped during global monthly stats (line 241)
+    d_id = portfolio_service.create_asset(name="Archived Asset", asset_type="etf")
+    portfolio_service.archive_asset(d_id, True)
+    portfolio_service.add_transaction(d_id, "invest", 100.0, "2025-01-05")
+    portfolio_service.get_monthly_stats(include_archived=False)

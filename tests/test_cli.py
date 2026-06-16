@@ -269,11 +269,11 @@ def test_cli_exceptions() -> None:
 def test_cli_none_asset_id() -> None:
     from unittest.mock import patch
 
-    from monetrack.domain.models import Asset
+    from monetrack.domain.models import Asset, AssetType
 
     with patch(
         "monetrack.application.cli.resolve_asset_or_exit",
-        return_value=Asset(id=None, name="Mock", type="stock"),
+        return_value=Asset(id=None, name="Mock", type=AssetType.STOCK),
     ):
         res = runner.invoke(app, ["asset", "delete", "Mock", "-y"])
         assert res.exit_code == 1
@@ -301,14 +301,14 @@ def test_cli_none_asset_id() -> None:
 
     with patch(
         "monetrack.application.cli.service.list_assets",
-        return_value=[Asset(id=None, name="Mock", type="stock")],
+        return_value=[Asset(id=None, name="Mock", type=AssetType.STOCK)],
     ):
         runner.invoke(app, ["stats"])
         runner.invoke(app, ["stats", "-m", "2025-01"])
 
         from monetrack.application.cli import show_single_asset_stats
 
-        show_single_asset_stats(Asset(id=None, name="Mock", type="stock"))
+        show_single_asset_stats(Asset(id=None, name="Mock", type=AssetType.STOCK))
 
 
 def test_cli_interactive_initialization() -> None:

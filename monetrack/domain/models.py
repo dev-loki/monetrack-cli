@@ -1,28 +1,42 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 
-@dataclass
+class AssetType(StrEnum):
+    P2P = "p2p"
+    STOCK = "stock"
+    ETF = "etf"
+    CRYPTO = "crypto"
+    OTHER = "other"
+
+
+class TransactionType(StrEnum):
+    INVEST = "invest"
+    WITHDRAW = "withdraw"
+
+
+@dataclass(slots=True)
 class Asset:
     id: int | None
     name: str
-    type: str  # p2p, stock, etf, crypto, other
+    type: AssetType
     isin: str | None = None
     wkn: str | None = None
     comment: str | None = None
     is_archived: bool = False
 
 
-@dataclass
+@dataclass(slots=True)
 class Transaction:
     id: int | None
     asset_id: int
     timestamp: str
-    type: str  # invest, withdraw
+    type: TransactionType
     amount: float
     comment: str | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class Snapshot:
     id: int | None
     asset_id: int
@@ -31,7 +45,7 @@ class Snapshot:
     comment: str | None = None
 
 
-@dataclass
+@dataclass(slots=True)
 class AssetStats:
     net_invested: float
     current_value: float
@@ -42,7 +56,7 @@ class AssetStats:
     total_withdrawn: float
 
 
-@dataclass
+@dataclass(slots=True)
 class GlobalSummary:
     net_invested: float
     current_value: float
@@ -53,7 +67,7 @@ class GlobalSummary:
     asset_count: int
 
 
-@dataclass
+@dataclass(slots=True)
 class MonthlyStats:
     month: str
     valuation_start: float
@@ -64,7 +78,7 @@ class MonthlyStats:
     earnings: float
 
 
-@dataclass
+@dataclass(slots=True)
 class HistoryEvent:
     source: str  # 'transaction' or 'snapshot'
     id: int

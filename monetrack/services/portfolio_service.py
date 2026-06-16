@@ -4,11 +4,13 @@ from pathlib import Path
 from monetrack.domain.models import (
     Asset,
     AssetStats,
+    AssetType,
     GlobalSummary,
     HistoryEvent,
     MonthlyStats,
     Snapshot,
     Transaction,
+    TransactionType,
 )
 from monetrack.ports.db_port import DatabasePort
 
@@ -23,15 +25,16 @@ class PortfolioService:
     def create_asset(
         self,
         name: str,
-        asset_type: str,
+        asset_type: AssetType | str,
         isin: str | None = None,
         wkn: str | None = None,
         comment: str | None = None,
     ) -> int:
+        atype = AssetType(asset_type) if isinstance(asset_type, str) else asset_type
         asset = Asset(
             id=None,
             name=name,
-            type=asset_type,
+            type=atype,
             isin=isin,
             wkn=wkn,
             comment=comment,
@@ -57,16 +60,17 @@ class PortfolioService:
     def add_transaction(
         self,
         asset_id: int,
-        tx_type: str,
+        tx_type: TransactionType | str,
         amount: float,
         timestamp: str,
         comment: str | None = None,
     ) -> int:
+        ttype = TransactionType(tx_type) if isinstance(tx_type, str) else tx_type
         tx = Transaction(
             id=None,
             asset_id=asset_id,
             timestamp=timestamp,
-            type=tx_type,
+            type=ttype,
             amount=amount,
             comment=comment,
         )
@@ -89,19 +93,322 @@ class PortfolioService:
         return self.db.add_snapshot(snap)
 
     def get_asset_stats(self, asset_id: int) -> AssetStats:
-        return self.db.get_asset_stats(asset_id)
+        txs = [t for t in self.db.list_transactions() if t.asset_id == asset_id]
+        snaps = [s for s in self.db.list_snapshots() if s.asset_id == asset_id]
+
+        invest_sum = sum(t.amount for t in txs if t.type == TransactionType.INVEST)
+        withdraw_sum = sum(t.amount for t in txs if t.type == TransactionType.WITHDRAW)
+        net_invested = invest_sum - withdraw_sum
+
+        if snaps:
+            latest = snaps[-1]
+            current_value = latest.value
+            last_val_date = latest.timestamp
+        else:
+            current_value = net_invested
+            last_val_date = "No snapshot"
+
+        earnings = current_value - net_invested
+        roi = (earnings / net_invested * 100.0) if net_invested > 0 else 0.0
+
+        return AssetStats(
+            net_invested=net_invested,
+            current_value=current_value,
+            earnings=earnings,
+            roi=roi,
+            last_valuation_date=last_val_date,
+            total_invested=invest_sum,
+            total_withdrawn=withdraw_sum,
+        )
 
     def get_global_summary(self, include_archived: bool = False) -> GlobalSummary:
-        return self.db.get_global_summary(include_archived=include_archived)
+        assets = self.db.list_assets(include_archived=include_archived)
+        txs = self.db.list_transactions()
+        snaps = self.db.list_snapshots()
+
+        txs_by_asset = {}
+        for t in txs:
+            txs_by_asset.setdefault(t.asset_id, []).append(t)
+
+        snaps_by_asset = {}
+        for s in snaps:
+            snaps_by_asset.setdefault(s.asset_id, []).append(s)
+
+        total_net_invested = 0.0
+        total_current_value = 0.0
+        total_earnings = 0.0
+        total_invested = 0.0
+        total_withdrawn = 0.0
+
+        for asset in assets:
+            if asset.id is None:
+                continue
+            a_txs = txs_by_asset.get(asset.id, [])
+            a_snaps = snaps_by_asset.get(asset.id, [])
+
+            invest_sum = sum(t.amount for t in a_txs if t.type == TransactionType.INVEST)
+            withdraw_sum = sum(t.amount for t in a_txs if t.type == TransactionType.WITHDRAW)
+            net_invested = invest_sum - withdraw_sum
+
+            if a_snaps:
+                current_value = a_snaps[-1].value
+            else:
+                current_value = net_invested
+
+            earnings = current_value - net_invested
+
+            total_net_invested += net_invested
+            total_current_value += current_value
+            total_earnings += earnings
+            total_invested += invest_sum
+            total_withdrawn += withdraw_sum
+
+        total_roi = (total_earnings / total_net_invested * 100.0) if total_net_invested > 0 else 0.0
+
+        return GlobalSummary(
+            net_invested=total_net_invested,
+            current_value=total_current_value,
+            earnings=total_earnings,
+            roi=total_roi,
+            total_invested=total_invested,
+            total_withdrawn=total_withdrawn,
+            asset_count=len(assets),
+        )
+
+    def _get_next_month(self, yyyy_mm: str) -> str:
+        year, month = map(int, yyyy_mm.split("-"))
+        if month == 12:
+            return f"{year + 1:04d}-01"
+        else:
+            return f"{year:04d}-{month + 1:02d}"
+
+    def _get_single_valuation(
+        self,
+        asset_id: int,
+        before_timestamp: str,
+        snapshots_by_asset: dict[int, list[Snapshot]],
+        transactions_by_asset: dict[int, list[Transaction]],
+    ) -> float:
+        snaps = snapshots_by_asset.get(asset_id, [])
+        latest_snap = None
+        for snap in snaps:
+            if snap.timestamp < before_timestamp:
+                latest_snap = snap
+            else:
+                break
+
+        txs = transactions_by_asset.get(asset_id, [])
+        if latest_snap:
+            snap_value = latest_snap.value
+            snap_time = latest_snap.timestamp
+            flow = 0.0
+            for tx in txs:
+                if tx.timestamp > snap_time and tx.timestamp < before_timestamp:
+                    if tx.type == TransactionType.INVEST:
+                        flow += tx.amount
+                    elif tx.type == TransactionType.WITHDRAW:
+                        flow -= tx.amount
+                elif tx.timestamp >= before_timestamp:
+                    break
+            return snap_value + flow
+        else:
+            flow = 0.0
+            for tx in txs:
+                if tx.timestamp < before_timestamp:
+                    if tx.type == TransactionType.INVEST:
+                        flow += tx.amount
+                    elif tx.type == TransactionType.WITHDRAW:
+                        flow -= tx.amount
+                else:
+                    break
+            return flow
+
+    def _get_valuation_before_in_memory(
+        self,
+        asset_id: int | None,
+        before_timestamp: str,
+        assets_map: dict[int, Asset],
+        snapshots_by_asset: dict[int, list[Snapshot]],
+        transactions_by_asset: dict[int, list[Transaction]],
+        include_archived: bool = False,
+    ) -> float:
+        if asset_id is not None:
+            return self._get_single_valuation(asset_id, before_timestamp, snapshots_by_asset, transactions_by_asset)
+
+        total_val = 0.0
+        for a_id, asset in assets_map.items():
+            if not include_archived and asset.is_archived:
+                continue
+            total_val += self._get_single_valuation(a_id, before_timestamp, snapshots_by_asset, transactions_by_asset)
+        return total_val
 
     def get_monthly_stats(self, asset_id: int | None = None, include_archived: bool = False) -> list[MonthlyStats]:
-        return self.db.get_monthly_stats(asset_id=asset_id, include_archived=include_archived)
+        assets = self.db.list_assets(include_archived=True)
+        assets_map: dict[int, Asset] = {a.id: a for a in assets if a.id is not None}
+        txs = self.db.list_transactions()
+        snaps = self.db.list_snapshots()
+
+        allowed_asset_ids = {a.id for a in assets if a.id is not None and (include_archived or not a.is_archived)}
+
+        if asset_id is not None:
+            txs = [t for t in txs if t.asset_id == asset_id]
+            snaps = [s for s in snaps if s.asset_id == asset_id]
+        else:
+            txs = [t for t in txs if t.asset_id in allowed_asset_ids]
+            snaps = [s for s in snaps if s.asset_id in allowed_asset_ids]
+
+        months_set = set()
+        for t in txs:
+            months_set.add(t.timestamp[:7])
+        for s in snaps:
+            months_set.add(s.timestamp[:7])
+
+        months = sorted(list(months_set))
+
+        txs_by_asset = {}
+        for t in txs:
+            txs_by_asset.setdefault(t.asset_id, []).append(t)
+        snaps_by_asset = {}
+        for s in snaps:
+            snaps_by_asset.setdefault(s.asset_id, []).append(s)
+
+        stats_list = []
+        for month in months:
+            start_time = f"{month}-01"
+            next_m = self._get_next_month(month)
+            end_time = f"{next_m}-01"
+
+            v_start = self._get_valuation_before_in_memory(
+                asset_id, start_time, assets_map, snaps_by_asset, txs_by_asset, include_archived
+            )
+            v_end = self._get_valuation_before_in_memory(
+                asset_id, end_time, assets_map, snaps_by_asset, txs_by_asset, include_archived
+            )
+
+            invest = sum(
+                t.amount
+                for t in txs
+                if t.timestamp >= start_time and t.timestamp < end_time and t.type == TransactionType.INVEST
+            )
+            withdraw = sum(
+                t.amount
+                for t in txs
+                if t.timestamp >= start_time and t.timestamp < end_time and t.type == TransactionType.WITHDRAW
+            )
+
+            net_flow = invest - withdraw
+            earnings = v_end - v_start - net_flow
+
+            stats_list.append(
+                MonthlyStats(
+                    month=month,
+                    valuation_start=v_start,
+                    valuation_end=v_end,
+                    invested=invest,
+                    withdrawn=withdraw,
+                    net_flow=net_flow,
+                    earnings=earnings,
+                )
+            )
+
+        return stats_list
 
     def get_asset_monthly_stats(self, asset_id: int, month: str) -> MonthlyStats:
-        return self.db.get_asset_monthly_stats(asset_id, month)
+        txs = [t for t in self.db.list_transactions() if t.asset_id == asset_id]
+        snaps = [s for s in self.db.list_snapshots() if s.asset_id == asset_id]
+
+        txs_by_asset = {asset_id: txs}
+        snaps_by_asset = {asset_id: snaps}
+
+        assets = self.db.list_assets(include_archived=True)
+        assets_map: dict[int, Asset] = {a.id: a for a in assets if a.id == asset_id and a.id is not None}
+
+        start_time = f"{month}-01"
+        next_m = self._get_next_month(month)
+        end_time = f"{next_m}-01"
+
+        v_start = self._get_valuation_before_in_memory(
+            asset_id, start_time, assets_map, snaps_by_asset, txs_by_asset, include_archived=True
+        )
+        v_end = self._get_valuation_before_in_memory(
+            asset_id, end_time, assets_map, snaps_by_asset, txs_by_asset, include_archived=True
+        )
+
+        invest = sum(
+            t.amount
+            for t in txs
+            if t.timestamp >= start_time and t.timestamp < end_time and t.type == TransactionType.INVEST
+        )
+        withdraw = sum(
+            t.amount
+            for t in txs
+            if t.timestamp >= start_time and t.timestamp < end_time and t.type == TransactionType.WITHDRAW
+        )
+
+        net_flow = invest - withdraw
+        earnings = v_end - v_start - net_flow
+
+        return MonthlyStats(
+            month=month,
+            valuation_start=v_start,
+            valuation_end=v_end,
+            invested=invest,
+            withdrawn=withdraw,
+            net_flow=net_flow,
+            earnings=earnings,
+        )
 
     def get_type_stats(self, include_archived: bool = False) -> dict[str, dict[str, float]]:
-        return self.db.get_type_stats(include_archived=include_archived)
+        assets = self.db.list_assets(include_archived=include_archived)
+        txs = self.db.list_transactions()
+        snaps = self.db.list_snapshots()
+
+        txs_by_asset = {}
+        for t in txs:
+            txs_by_asset.setdefault(t.asset_id, []).append(t)
+        snaps_by_asset = {}
+        for s in snaps:
+            snaps_by_asset.setdefault(s.asset_id, []).append(s)
+
+        by_type: dict[str, dict[str, float]] = {}
+
+        for asset in assets:
+            if asset.id is None:
+                continue
+            t = str(asset.type)
+
+            a_txs = txs_by_asset.get(asset.id, [])
+            a_snaps = snaps_by_asset.get(asset.id, [])
+
+            invest_sum = sum(tx.amount for tx in a_txs if tx.type == TransactionType.INVEST)
+            withdraw_sum = sum(tx.amount for tx in a_txs if tx.type == TransactionType.WITHDRAW)
+            net_invested = invest_sum - withdraw_sum
+
+            if a_snaps:
+                current_value = a_snaps[-1].value
+            else:
+                current_value = net_invested
+
+            earnings = current_value - net_invested
+
+            if t not in by_type:
+                by_type[t] = {
+                    "net_invested": 0.0,
+                    "current_value": 0.0,
+                    "earnings": 0.0,
+                    "total_invested": 0.0,
+                    "total_withdrawn": 0.0,
+                }
+            by_type[t]["net_invested"] += net_invested
+            by_type[t]["current_value"] += current_value
+            by_type[t]["earnings"] += earnings
+            by_type[t]["total_invested"] += invest_sum
+            by_type[t]["total_withdrawn"] += withdraw_sum
+
+        for data in by_type.values():
+            data["roi"] = (data["earnings"] / data["net_invested"] * 100.0) if data["net_invested"] > 0 else 0.0
+
+        return by_type
 
     def get_history(self, asset_id: int | None = None, event_type: str | None = None) -> list[HistoryEvent]:
         return self.db.get_history(asset_id=asset_id, event_type=event_type)
@@ -110,12 +417,13 @@ class PortfolioService:
         self,
         asset_id: int,
         name: str | None = None,
-        type: str | None = None,
+        type: AssetType | str | None = None,
         isin: str | None = None,
         wkn: str | None = None,
         comment: str | None = None,
     ) -> None:
-        self.db.update_asset(asset_id, name, type, isin, wkn, comment)
+        atype = AssetType(type) if isinstance(type, str) else type
+        self.db.update_asset(asset_id, name, atype, isin, wkn, comment)
 
     def update_transaction(
         self,
@@ -123,9 +431,10 @@ class PortfolioService:
         amount: float | None = None,
         timestamp: str | None = None,
         comment: str | None = None,
-        type: str | None = None,
+        type: TransactionType | str | None = None,
     ) -> None:
-        self.db.update_transaction(tx_id, amount, timestamp, comment, type)
+        ttype = TransactionType(type) if isinstance(type, str) else type
+        self.db.update_transaction(tx_id, amount, timestamp, comment, ttype)
 
     def update_snapshot(
         self,
@@ -147,26 +456,23 @@ class PortfolioService:
             writer.writerow(["id", "name", "type", "isin", "wkn", "comment", "is_archived"])
             for a in assets:
                 writer.writerow(
-                    [a.id, a.name, a.type, a.isin or "", a.wkn or "", a.comment or "", 1 if a.is_archived else 0]
+                    [a.id, a.name, a.type.value, a.isin or "", a.wkn or "", a.comment or "", 1 if a.is_archived else 0]
                 )
 
-        # 2. Export transactions & snapshots using raw connection
-        with self.db.get_raw_connection() as conn:
-            txs = conn.execute("SELECT * FROM transactions").fetchall()
-            with open(export_dir / "transactions.csv", "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["id", "asset_id", "timestamp", "type", "amount", "comment"])
-                for row in txs:
-                    writer.writerow(
-                        [row["id"], row["asset_id"], row["timestamp"], row["type"], row["amount"], row["comment"] or ""]
-                    )
+        # 2. Export transactions & snapshots
+        txs = self.db.list_transactions()
+        with open(export_dir / "transactions.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "asset_id", "timestamp", "type", "amount", "comment"])
+            for tx in txs:
+                writer.writerow([tx.id, tx.asset_id, tx.timestamp, tx.type.value, tx.amount, tx.comment or ""])
 
-            snaps = conn.execute("SELECT * FROM snapshots").fetchall()
-            with open(export_dir / "snapshots.csv", "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["id", "asset_id", "timestamp", "value", "comment"])
-                for row in snaps:
-                    writer.writerow([row["id"], row["asset_id"], row["timestamp"], row["value"], row["comment"] or ""])
+        snaps = self.db.list_snapshots()
+        with open(export_dir / "snapshots.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "asset_id", "timestamp", "value", "comment"])
+            for snap in snaps:
+                writer.writerow([snap.id, snap.asset_id, snap.timestamp, snap.value, snap.comment or ""])
 
     def import_from_csv(self, import_dir: Path) -> dict[str, int]:
         """Import assets, transactions, and snapshots from CSVs in the specified directory."""
@@ -197,7 +503,7 @@ class PortfolioService:
                         new_asset = Asset(
                             id=None,
                             name=name,
-                            type=row["type"],
+                            type=AssetType(row["type"]),
                             isin=isin,
                             wkn=wkn,
                             comment=comment,
@@ -224,7 +530,7 @@ class PortfolioService:
                             id=None,
                             asset_id=new_asset_id,
                             timestamp=row["timestamp"],
-                            type=row["type"],
+                            type=TransactionType(row["type"]),
                             amount=float(row["amount"]),
                             comment=comment,
                         )

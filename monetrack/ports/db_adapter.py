@@ -1,19 +1,21 @@
 import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import override
 
 from monetrack.domain.models import (
     Asset,
-    AssetStats,
-    GlobalSummary,
+    AssetType,
     HistoryEvent,
-    MonthlyStats,
     Snapshot,
     Transaction,
+    TransactionType,
 )
+from monetrack.ports.db_port import DatabasePort
 
 
-class SQLiteDatabaseAdapter:
+class SQLiteDatabaseAdapter(DatabasePort):
     def __init__(self, db_path: Path | None = None):
         if db_path:
             self.db_path = db_path
@@ -40,14 +42,25 @@ class SQLiteDatabaseAdapter:
 
     def get_connection(self) -> sqlite3.Connection:
         """Create a connection to the SQLite database with Foreign Keys enabled."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def transaction(self):
+        """Context manager that commits on success, rolls back on error, and closes the connection."""
+        conn = self.get_connection()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    @override
     def init_db(self) -> None:
         """Initialize the SQLite schema and perform migrations."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             conn.execute("""
             CREATE TABLE IF NOT EXISTS assets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,31 +101,31 @@ class SQLiteDatabaseAdapter:
                 FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE
             );
             """)
-            conn.commit()
 
+    @override
     def create_asset(self, asset: Asset) -> int:
         """Insert a new asset into the database."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO assets (name, type, isin, wkn, comment, is_archived) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     asset.name,
-                    asset.type.lower(),
+                    asset.type.value,
                     asset.isin,
                     asset.wkn,
                     asset.comment,
                     1 if asset.is_archived else 0,
                 ),
             )
-            conn.commit()
             if cursor.lastrowid is None:
                 raise RuntimeError("Database insert failed: lastrowid is None")
             return cursor.lastrowid
 
+    @override
     def list_assets(self, include_archived: bool = False) -> list[Asset]:
         """Return all registered assets."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             if include_archived:
                 rows = conn.execute("SELECT * FROM assets ORDER BY name ASC").fetchall()
             else:
@@ -121,7 +134,7 @@ class SQLiteDatabaseAdapter:
                 Asset(
                     id=row["id"],
                     name=row["name"],
-                    type=row["type"],
+                    type=AssetType(row["type"]),
                     isin=row["isin"],
                     wkn=row["wkn"],
                     comment=row["comment"],
@@ -130,9 +143,10 @@ class SQLiteDatabaseAdapter:
                 for row in rows
             ]
 
+    @override
     def find_asset(self, query: str) -> Asset | None:
         """Find a unique asset by Name (case-insensitive), ID, ISIN, or WKN."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             row = None
             if query.isdigit():
                 row = conn.execute("SELECT * FROM assets WHERE id = ?", (int(query),)).fetchone()
@@ -151,7 +165,7 @@ class SQLiteDatabaseAdapter:
                 return Asset(
                     id=row["id"],
                     name=row["name"],
-                    type=row["type"],
+                    type=AssetType(row["type"]),
                     isin=row["isin"],
                     wkn=row["wkn"],
                     comment=row["comment"],
@@ -159,393 +173,85 @@ class SQLiteDatabaseAdapter:
                 )
             return None
 
+    @override
     def delete_asset(self, asset_id: int) -> None:
         """Delete an asset and all associated transactions/snapshots."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             conn.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
-            conn.commit()
 
+    @override
     def rename_asset(self, asset_id: int, new_name: str) -> None:
         """Rename an asset."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             conn.execute("UPDATE assets SET name = ? WHERE id = ?", (new_name, asset_id))
-            conn.commit()
 
+    @override
     def archive_asset(self, asset_id: int, is_archived: bool) -> None:
         """Archive or unarchive an asset."""
         val = 1 if is_archived else 0
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             conn.execute("UPDATE assets SET is_archived = ? WHERE id = ?", (val, asset_id))
-            conn.commit()
 
+    @override
     def add_transaction(self, tx: Transaction) -> int:
         """Log an investment or withdrawal transaction."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO transactions (asset_id, type, amount, timestamp, comment) VALUES (?, ?, ?, ?, ?)",
-                (tx.asset_id, tx.type.lower(), tx.amount, tx.timestamp, tx.comment),
+                (tx.asset_id, tx.type.value, tx.amount, tx.timestamp, tx.comment),
             )
-            conn.commit()
             if cursor.lastrowid is None:
                 raise RuntimeError("Database insert failed: lastrowid is None")
             return cursor.lastrowid
 
+    @override
     def add_snapshot(self, snap: Snapshot) -> int:
         """Log a valuation snapshot."""
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO snapshots (asset_id, value, timestamp, comment) VALUES (?, ?, ?, ?)",
                 (snap.asset_id, snap.value, snap.timestamp, snap.comment),
             )
-            conn.commit()
             if cursor.lastrowid is None:
                 raise RuntimeError("Database insert failed: lastrowid is None")
             return cursor.lastrowid
 
-    def get_asset_stats(self, asset_id: int) -> AssetStats:
-        """Calculate Net Invested, Current Value, and Earnings for a single asset."""
-        with self.get_connection() as conn:
-            invest_sum = (
-                conn.execute(
-                    "SELECT SUM(amount) FROM transactions WHERE asset_id = ? AND type = 'invest'",
-                    (asset_id,),
-                ).fetchone()[0]
-                or 0.0
-            )
-
-            withdraw_sum = (
-                conn.execute(
-                    "SELECT SUM(amount) FROM transactions WHERE asset_id = ? AND type = 'withdraw'",
-                    (asset_id,),
-                ).fetchone()[0]
-                or 0.0
-            )
-
-            net_invested = invest_sum - withdraw_sum
-
-            latest_snapshot = conn.execute(
-                "SELECT value, timestamp FROM snapshots WHERE asset_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1",
-                (asset_id,),
-            ).fetchone()
-
-            if latest_snapshot:
-                current_value = latest_snapshot[0]
-                last_val_date = latest_snapshot[1]
-            else:
-                current_value = net_invested
-                last_val_date = "No snapshot"
-
-            earnings = current_value - net_invested
-            roi = (earnings / net_invested * 100.0) if net_invested > 0 else 0.0
-
-            return AssetStats(
-                net_invested=net_invested,
-                current_value=current_value,
-                earnings=earnings,
-                roi=roi,
-                last_valuation_date=last_val_date,
-                total_invested=invest_sum,
-                total_withdrawn=withdraw_sum,
-            )
-
-    def get_global_summary(self, include_archived: bool = False) -> GlobalSummary:
-        """Calculate overall statistics across all assets."""
-        assets = self.list_assets(include_archived=include_archived)
-        total_net_invested = 0.0
-        total_current_value = 0.0
-        total_earnings = 0.0
-        total_invested = 0.0
-        total_withdrawn = 0.0
-
-        for asset in assets:
-            if asset.id is None:
-                continue
-            stats = self.get_asset_stats(asset.id)
-            total_net_invested += stats.net_invested
-            total_current_value += stats.current_value
-            total_earnings += stats.earnings
-            total_invested += stats.total_invested
-            total_withdrawn += stats.total_withdrawn
-
-        total_roi = (total_earnings / total_net_invested * 100.0) if total_net_invested > 0 else 0.0
-
-        return GlobalSummary(
-            net_invested=total_net_invested,
-            current_value=total_current_value,
-            earnings=total_earnings,
-            roi=total_roi,
-            total_invested=total_invested,
-            total_withdrawn=total_withdrawn,
-            asset_count=len(assets),
-        )
-
-    def _get_next_month(self, yyyy_mm: str) -> str:
-        year, month = map(int, yyyy_mm.split("-"))
-        if month == 12:
-            return f"{year + 1:04d}-01"
-        else:
-            return f"{year:04d}-{month + 1:02d}"
-
-    def get_valuation_before(
-        self, conn: sqlite3.Connection, asset_id: int | None, before_timestamp: str, include_archived: bool = False
-    ) -> float:
-        """Calculate the valuation of asset(s) at/before a specific timestamp."""
-        if asset_id is not None:
-            return self._get_single_asset_valuation_before(conn, asset_id, before_timestamp)
-
-        if include_archived:
-            assets = conn.execute("SELECT id FROM assets").fetchall()
-        else:
-            assets = conn.execute("SELECT id FROM assets WHERE is_archived = 0").fetchall()
-        total_val = 0.0
-        for asset in assets:
-            total_val += self._get_single_asset_valuation_before(conn, asset["id"], before_timestamp)
-        return total_val
-
-    def _get_single_asset_valuation_before(
-        self, conn: sqlite3.Connection, asset_id: int, before_timestamp: str
-    ) -> float:
-        row = conn.execute(
-            "SELECT value, timestamp FROM snapshots WHERE asset_id = ? AND "
-            "timestamp < ? ORDER BY timestamp DESC, id DESC LIMIT 1",
-            (asset_id, before_timestamp),
-        ).fetchone()
-
-        if row:
-            snap_value, snap_time = row["value"], row["timestamp"]
-            flow = (
-                conn.execute(
-                    "SELECT SUM(CASE WHEN type = 'invest' THEN amount ELSE -amount END) "
-                    "FROM transactions WHERE asset_id = ? AND timestamp > ? AND timestamp < ?",
-                    (asset_id, snap_time, before_timestamp),
-                ).fetchone()[0]
-                or 0.0
-            )
-            return snap_value + flow
-        else:
-            flow = (
-                conn.execute(
-                    "SELECT SUM(CASE WHEN type = 'invest' THEN amount ELSE -amount END) "
-                    "FROM transactions WHERE asset_id = ? AND timestamp < ?",
-                    (asset_id, before_timestamp),
-                ).fetchone()[0]
-                or 0.0
-            )
-            return flow
-
-    def get_all_months(
-        self, conn: sqlite3.Connection, asset_id: int | None = None, include_archived: bool = False
-    ) -> list[str]:
-        if asset_id is not None:
-            row = conn.execute(
-                """
-                SELECT MIN(min_t) as global_min, MAX(max_t) as global_max FROM (
-                    SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM transactions WHERE asset_id = ?
-                    UNION ALL
-                    SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM snapshots WHERE asset_id = ?
+    @override
+    def list_transactions(self) -> list[Transaction]:
+        """List all transactions."""
+        with self.transaction() as conn:
+            rows = conn.execute("SELECT * FROM transactions ORDER BY timestamp ASC, id ASC").fetchall()
+            return [
+                Transaction(
+                    id=row["id"],
+                    asset_id=row["asset_id"],
+                    timestamp=row["timestamp"],
+                    type=TransactionType(row["type"]),
+                    amount=row["amount"],
+                    comment=row["comment"],
                 )
-            """,
-                (asset_id, asset_id),
-            ).fetchone()
-        else:
-            if include_archived:
-                row = conn.execute("""
-                    SELECT MIN(min_t) as global_min, MAX(max_t) as global_max FROM (
-                        SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM transactions
-                        UNION ALL
-                        SELECT MIN(timestamp) as min_t, MAX(timestamp) as max_t FROM snapshots
-                    )
-                """).fetchone()
-            else:
-                row = conn.execute("""
-                    SELECT MIN(min_t) as global_min, MAX(max_t) as global_max FROM (
-                        SELECT MIN(t.timestamp) as min_t, MAX(t.timestamp) as max_t FROM transactions t
-                        JOIN assets a ON t.asset_id = a.id WHERE a.is_archived = 0
-                        UNION ALL
-                        SELECT MIN(s.timestamp) as min_t, MAX(s.timestamp) as max_t FROM snapshots s
-                        JOIN assets a ON s.asset_id = a.id WHERE a.is_archived = 0
-                    )
-                """).fetchone()
+                for row in rows
+            ]
 
-        if not row or not row["global_min"]:
-            return []
-
-        min_date = row["global_min"][:7]
-        max_date = row["global_max"][:7]
-
-        from datetime import datetime
-
-        current_month = datetime.now().strftime("%Y-%m")
-        if current_month > max_date:
-            max_date = current_month
-
-        months = []
-        curr = min_date
-        while curr <= max_date:
-            months.append(curr)
-            curr = self._get_next_month(curr)
-        return months
-
-    def get_monthly_stats(self, asset_id: int | None = None, include_archived: bool = False) -> list[MonthlyStats]:
-        with self.get_connection() as conn:
-            months = self.get_all_months(conn, asset_id, include_archived)
-            stats_list = []
-
-            for month in months:
-                start_time = f"{month}-01"
-                next_m = self._get_next_month(month)
-                end_time = f"{next_m}-01"
-
-                v_start = self.get_valuation_before(conn, asset_id, start_time, include_archived)
-                v_end = self.get_valuation_before(conn, asset_id, end_time, include_archived)
-
-                if asset_id is not None:
-                    invest = (
-                        conn.execute(
-                            "SELECT SUM(amount) FROM transactions WHERE asset_id = ? AND "
-                            "type = 'invest' AND timestamp >= ? AND timestamp < ?",
-                            (asset_id, start_time, end_time),
-                        ).fetchone()[0]
-                        or 0.0
-                    )
-
-                    withdraw = (
-                        conn.execute(
-                            "SELECT SUM(amount) FROM transactions WHERE asset_id = ? AND "
-                            "type = 'withdraw' AND timestamp >= ? AND timestamp < ?",
-                            (asset_id, start_time, end_time),
-                        ).fetchone()[0]
-                        or 0.0
-                    )
-                else:
-                    if include_archived:
-                        invest = (
-                            conn.execute(
-                                "SELECT SUM(amount) FROM transactions WHERE type = 'invest' AND "
-                                "timestamp >= ? AND timestamp < ?",
-                                (start_time, end_time),
-                            ).fetchone()[0]
-                            or 0.0
-                        )
-
-                        withdraw = (
-                            conn.execute(
-                                "SELECT SUM(amount) FROM transactions WHERE type = 'withdraw' AND "
-                                "timestamp >= ? AND timestamp < ?",
-                                (start_time, end_time),
-                            ).fetchone()[0]
-                            or 0.0
-                        )
-                    else:
-                        invest = (
-                            conn.execute(
-                                "SELECT SUM(t.amount) FROM transactions t JOIN assets a ON t.asset_id = a.id "
-                                "WHERE t.type = 'invest' AND a.is_archived = 0 "
-                                "AND t.timestamp >= ? AND t.timestamp < ?",
-                                (start_time, end_time),
-                            ).fetchone()[0]
-                            or 0.0
-                        )
-
-                        withdraw = (
-                            conn.execute(
-                                "SELECT SUM(t.amount) FROM transactions t JOIN assets a ON t.asset_id = a.id "
-                                "WHERE t.type = 'withdraw' AND a.is_archived = 0 "
-                                "AND t.timestamp >= ? AND t.timestamp < ?",
-                                (start_time, end_time),
-                            ).fetchone()[0]
-                            or 0.0
-                        )
-
-                net_flow = invest - withdraw
-                earnings = v_end - v_start - net_flow
-
-                stats_list.append(
-                    MonthlyStats(
-                        month=month,
-                        valuation_start=v_start,
-                        valuation_end=v_end,
-                        invested=invest,
-                        withdrawn=withdraw,
-                        net_flow=net_flow,
-                        earnings=earnings,
-                    )
+    @override
+    def list_snapshots(self) -> list[Snapshot]:
+        """List all snapshots."""
+        with self.transaction() as conn:
+            rows = conn.execute("SELECT * FROM snapshots ORDER BY timestamp ASC, id ASC").fetchall()
+            return [
+                Snapshot(
+                    id=row["id"],
+                    asset_id=row["asset_id"],
+                    timestamp=row["timestamp"],
+                    value=row["value"],
+                    comment=row["comment"],
                 )
+                for row in rows
+            ]
 
-            return stats_list
-
-    def get_asset_monthly_stats(self, asset_id: int, month: str) -> MonthlyStats:
-        with self.get_connection() as conn:
-            start_time = f"{month}-01"
-            next_m = self._get_next_month(month)
-            end_time = f"{next_m}-01"
-
-            v_start = self.get_valuation_before(conn, asset_id, start_time)
-            v_end = self.get_valuation_before(conn, asset_id, end_time)
-
-            invest = (
-                conn.execute(
-                    "SELECT SUM(amount) FROM transactions WHERE asset_id = ? AND "
-                    "type = 'invest' AND timestamp >= ? AND timestamp < ?",
-                    (asset_id, start_time, end_time),
-                ).fetchone()[0]
-                or 0.0
-            )
-
-            withdraw = (
-                conn.execute(
-                    "SELECT SUM(amount) FROM transactions WHERE asset_id = ? AND "
-                    "type = 'withdraw' AND timestamp >= ? AND timestamp < ?",
-                    (asset_id, start_time, end_time),
-                ).fetchone()[0]
-                or 0.0
-            )
-
-            net_flow = invest - withdraw
-            earnings = v_end - v_start - net_flow
-
-            return MonthlyStats(
-                month=month,
-                valuation_start=v_start,
-                valuation_end=v_end,
-                invested=invest,
-                withdrawn=withdraw,
-                net_flow=net_flow,
-                earnings=earnings,
-            )
-
-    def get_type_stats(self, include_archived: bool = False) -> dict[str, dict[str, float]]:
-        assets = self.list_assets(include_archived=include_archived)
-        by_type: dict[str, dict[str, float]] = {}
-
-        for asset in assets:
-            if asset.id is None:
-                continue
-            t = asset.type
-            stats = self.get_asset_stats(asset.id)
-
-            if t not in by_type:
-                by_type[t] = {
-                    "net_invested": 0.0,
-                    "current_value": 0.0,
-                    "earnings": 0.0,
-                    "total_invested": 0.0,
-                    "total_withdrawn": 0.0,
-                }
-
-            by_type[t]["net_invested"] += stats.net_invested
-            by_type[t]["current_value"] += stats.current_value
-            by_type[t]["earnings"] += stats.earnings
-            by_type[t]["total_invested"] += stats.total_invested
-            by_type[t]["total_withdrawn"] += stats.total_withdrawn
-
-        for _t, data in by_type.items():
-            data["roi"] = (data["earnings"] / data["net_invested"] * 100.0) if data["net_invested"] > 0 else 0.0
-
-        return by_type
-
+    @override
     def get_history(self, asset_id: int | None = None, event_type: str | None = None) -> list[HistoryEvent]:
         """Retrieve chronological history of transactions and snapshots."""
         tx_where = []
@@ -558,11 +264,12 @@ class SQLiteDatabaseAdapter:
             params.extend([asset_id, asset_id])
 
         if event_type is not None:
-            if event_type == "snapshot":
+            et_str = event_type.value if isinstance(event_type, TransactionType) else str(event_type)
+            if et_str == "snapshot":
                 tx_where.append("1=0")
             else:
                 tx_where.append("t.type = ?")
-                params.append(event_type)
+                params.append(et_str)
                 snap_where.append("1=0")
 
         tx_where_str = " AND ".join(tx_where)
@@ -586,7 +293,7 @@ class SQLiteDatabaseAdapter:
             ORDER BY timestamp ASC, source DESC, event_id ASC
         """
 
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             rows = conn.execute(query, params).fetchall()
             return [
                 HistoryEvent(
@@ -601,11 +308,12 @@ class SQLiteDatabaseAdapter:
                 for row in rows
             ]
 
+    @override
     def update_asset(
         self,
         asset_id: int,
         name: str | None = None,
-        type: str | None = None,
+        type: AssetType | None = None,
         isin: str | None = None,
         wkn: str | None = None,
         comment: str | None = None,
@@ -617,7 +325,7 @@ class SQLiteDatabaseAdapter:
             params.append(name)
         if type is not None:
             updates.append("type = ?")
-            params.append(type)
+            params.append(type.value)
         if isin is not None:
             updates.append("isin = ?")
             params.append(isin if isin != "" else None)
@@ -632,16 +340,17 @@ class SQLiteDatabaseAdapter:
             return
 
         params.append(asset_id)
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             conn.execute(f"UPDATE assets SET {', '.join(updates)} WHERE id = ?", tuple(params))
 
+    @override
     def update_transaction(
         self,
         tx_id: int,
         amount: float | None = None,
         timestamp: str | None = None,
         comment: str | None = None,
-        type: str | None = None,
+        type: TransactionType | None = None,
     ) -> None:
         updates = []
         params = []
@@ -656,17 +365,18 @@ class SQLiteDatabaseAdapter:
             params.append(comment if comment != "" else None)
         if type is not None:
             updates.append("type = ?")
-            params.append(type)
+            params.append(type.value)
 
         if not updates:
             return
 
         params.append(tx_id)
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             res = conn.execute(f"UPDATE transactions SET {', '.join(updates)} WHERE id = ?", tuple(params))
             if res.rowcount == 0:
                 raise ValueError(f"Transaction with ID {tx_id} not found.")
 
+    @override
     def update_snapshot(
         self,
         snap_id: int,
@@ -690,10 +400,7 @@ class SQLiteDatabaseAdapter:
             return
 
         params.append(snap_id)
-        with self.get_connection() as conn:
+        with self.transaction() as conn:
             res = conn.execute(f"UPDATE snapshots SET {', '.join(updates)} WHERE id = ?", tuple(params))
             if res.rowcount == 0:
                 raise ValueError(f"Snapshot with ID {snap_id} not found.")
-
-    def get_raw_connection(self) -> sqlite3.Connection:
-        return self.get_connection()
