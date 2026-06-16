@@ -426,8 +426,7 @@ def test_cli_run_as_main() -> None:
 
     import pytest
 
-    with patch("sys.argv", ["monetrack"]):
-        with patch("prompt_toolkit.PromptSession.prompt", side_effect=EOFError()):
-            with pytest.raises(SystemExit) as excinfo:
-                runpy.run_module("monetrack.application.cli", run_name="__main__")
-            assert excinfo.value.code == 0
+    with patch("sys.argv", ["monetrack"]), patch("prompt_toolkit.PromptSession.prompt", side_effect=EOFError()):
+        with pytest.raises(SystemExit) as excinfo:
+            runpy.run_module("monetrack.application.cli", run_name="__main__")
+        assert excinfo.value.code == 0

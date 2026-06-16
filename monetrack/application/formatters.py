@@ -12,20 +12,18 @@ def format_earnings(val: float) -> str:
     """Format profit/loss with explicit signs and colors (green/red)."""
     if val > 0.005:
         return f"[green]+€{val:,.2f}[/green]"
-    elif val < -0.005:
+    if val < -0.005:
         return f"[red]-€{-val:,.2f}[/red]"
-    else:
-        return f"[dim]€{val:,.2f}[/dim]"
+    return f"[dim]€{val:,.2f}[/dim]"
 
 
 def format_roi(val: float) -> str:
     """Format ROI percentages with signs and colors."""
     if val > 0.005:
         return f"[green]+{val:.2f}%[/green]"
-    elif val < -0.005:
+    if val < -0.005:
         return f"[red]{val:.2f}%[/red]"
-    else:
-        return "[dim]0.00%[/dim]"
+    return "[dim]0.00%[/dim]"
 
 
 def _render_half(earnings_list: list[float], max_val: float, height: int, is_positive: bool) -> list[str]:

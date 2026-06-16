@@ -33,10 +33,7 @@ class SQLiteDatabaseAdapter(DatabasePort):
             return p
 
         xdg_data_home = os.environ.get("XDG_DATA_HOME")
-        if xdg_data_home:
-            base_dir = Path(xdg_data_home)
-        else:
-            base_dir = Path.home() / ".local" / "share"
+        base_dir = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
 
         app_dir = base_dir / "monetrack"
         app_dir.mkdir(parents=True, exist_ok=True)

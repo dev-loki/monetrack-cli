@@ -165,10 +165,7 @@ class PortfolioService:
             withdraw_sum = sum(t.amount for t in a_txs if t.type == TransactionType.WITHDRAW)
             net_invested = invest_sum - withdraw_sum
 
-            if a_snaps:
-                current_value = a_snaps[-1].value
-            else:
-                current_value = net_invested
+            current_value = a_snaps[-1].value if a_snaps else net_invested
 
             earnings = current_value - net_invested
 
@@ -194,8 +191,7 @@ class PortfolioService:
         year, month = map(int, yyyy_mm.split("-"))
         if month == 12:
             return f"{year + 1:04d}-01"
-        else:
-            return f"{year:04d}-{month + 1:02d}"
+        return f"{year:04d}-{month + 1:02d}"
 
     def _get_single_valuation(
         self,
@@ -268,7 +264,7 @@ class PortfolioService:
         for s in snaps:
             months_set.add(s.timestamp[:7])
 
-        months = sorted(list(months_set))
+        months = sorted(months_set)
 
         txs_by_asset = {}
         for t in txs:
@@ -389,10 +385,7 @@ class PortfolioService:
             withdraw_sum = sum(tx.amount for tx in a_txs if tx.type == TransactionType.WITHDRAW)
             net_invested = invest_sum - withdraw_sum
 
-            if a_snaps:
-                current_value = a_snaps[-1].value
-            else:
-                current_value = net_invested
+            current_value = a_snaps[-1].value if a_snaps else net_invested
 
             earnings = current_value - net_invested
 
@@ -466,7 +459,7 @@ class PortfolioService:
 
         # 1. Export assets
         assets = self.db.list_assets(include_archived=True)
-        with open(export_dir / "assets.csv", "w", newline="", encoding="utf-8") as f:
+        with (export_dir / "assets.csv").open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["id", "name", "type", "isin", "wkn", "comment", "is_archived"])
             for a in assets:
@@ -474,14 +467,14 @@ class PortfolioService:
 
         # 2. Export transactions & snapshots
         txs = self.db.list_transactions()
-        with open(export_dir / "transactions.csv", "w", newline="", encoding="utf-8") as f:
+        with (export_dir / "transactions.csv").open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["id", "asset_id", "timestamp", "type", "amount", "comment"])
             for tx in txs:
                 writer.writerow([tx.id, tx.asset_id, tx.timestamp, tx.type.value, tx.amount, tx.comment])
 
         snaps = self.db.list_snapshots()
-        with open(export_dir / "snapshots.csv", "w", newline="", encoding="utf-8") as f:
+        with (export_dir / "snapshots.csv").open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["id", "asset_id", "timestamp", "value", "comment"])
             for snap in snaps:
@@ -491,7 +484,7 @@ class PortfolioService:
         """Yield rows from a CSV file if it exists, managing file context automatically."""
         if not file_path.exists():
             return
-        with open(file_path, encoding="utf-8") as f:
+        with file_path.open(encoding="utf-8") as f:
             yield from csv.DictReader(f)
 
     def import_from_csv(self, import_dir: Path) -> dict[str, int]:

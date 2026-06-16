@@ -46,17 +46,70 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # bugbear
-    "UP",  # pyupgrade
-    "RUF", # Ruff-specific rules
-    "C90", # McCabe complexity
+# Rules: https://docs.astral.sh/ruff/rules/
+select = [ "ALL" ]
+fixable = [ "ALL" ]
+ignore = [
+  # strict / from user list
+  "ANN204",  # would require docstring return in magic dunder methods
+  "D100",  # would require docstring in public modules
+  "D101",  # would force class docstrings
+  "D102",  # would force public function docstrings
+  "D103",  # would force function docstrings
+  "D104",  # would force package docstrings
+  "D107",  # would force __init__ docstrings
+  "D203",  # incompatible to D211 - no blank line before class
+  "D212",  # incompatible to D213 - doctypes
+  "EM101",  # would force text to be saved in var first before raising Exceptions
+  "COM812",  #  incompatible linter for formatting rule
+  "TC003",  # would force if TYPE_CHECKING, but not yet good enough
+
+  # Additional opinionated/pedantic rules from enabling ALL
+  "FBT001",  # Boolean positional argument in function definition
+  "FBT002",  # Boolean default positional argument in function definition
+  "FBT003",  # Boolean positional value in function call
+  "TRY003",  # Avoid specifying long messages outside the exception class
+  "EM102",   # Exception must not use an f-string literal
+  "PLR2004", # Magic value used in comparison
+  "PLR0913", # Too many arguments in function definition
+  "A002",    # Function argument shadowing a Python builtin
+  "D105",    # Missing docstring in magic method
+  "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed
+  "DTZ011",  # datetime.date.today() used without timezone
+  "TRY300",  # Consider moving this statement to an else block
+  "PLR0915", # Too many statements
+  "SIM105",  # Use contextlib.suppress instead of try-except-pass
+  "S110",    # try-except-pass detected
+  "BLE001",  # Do not catch blind exception Exception
+  "ANN201",  # Missing return type annotation for public function
+  "PLC0415", # import should be at the top-level of a file
 ]
-ignore = []
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+# "FILE" = [ "LIST", "OF", "RULE_IDS" ]
+# e.g. "__init__.py" = ["F401"]
+"tests/*" = [
+    "ANN201",
+    "ANN202",
+    "INP001",
+    "PLR2004",
+    "S101",
+    "FBT003",
+    "TRY003",
+    "EM102",
+    "PLC0415",
+    "SIM117",
+    "RSE102",
+    "S108",
+]
+"monetrack/ports/db_adapter.py" = [
+    "S608",  # Safe construction of parameters with placeholders in SQLite
+]
+
+[tool.ruff.lint.isort]
+# just to be sure that they're really treated as such
+known-third-party = ["fastapi", "pydantic", "starlette"]
+known-local-folder = ["monetrack"]

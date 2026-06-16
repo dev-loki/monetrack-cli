@@ -32,7 +32,7 @@ class LazyServiceProxy:
         return getattr(self._get_service(), name)
 
 
-service = cast(PortfolioService, LazyServiceProxy())
+service = cast("PortfolioService", LazyServiceProxy())
 
 # Initialize Typer apps
 app = typer.Typer(
@@ -347,10 +347,9 @@ def update_transaction(
     if date is not None:
         tx_date = validate_date_or_exit(date)
 
-    if type is not None:
-        if type.lower() not in ["invest", "withdraw"]:
-            rprint(f"[red]Error: Invalid type '{type}'. Must be 'invest' or 'withdraw'[/red]")
-            raise typer.Exit(code=1)
+    if type is not None and type.lower() not in ["invest", "withdraw"]:
+        rprint(f"[red]Error: Invalid type '{type}'. Must be 'invest' or 'withdraw'[/red]")
+        raise typer.Exit(code=1)
 
     try:
         service.update_transaction(tx_id, amount, tx_date, comment, type)
@@ -407,10 +406,9 @@ def stats(
     if asset_query:
         target_asset = resolve_asset_or_exit(asset_query)
 
-    if month:
-        if len(month) != 7 or month[4] != "-":
-            rprint("[red]Error: Month filter must be in YYYY-MM format.[/red]")
-            raise typer.Exit(code=1) from None
+    if month and (len(month) != 7 or month[4] != "-"):
+        rprint("[red]Error: Month filter must be in YYYY-MM format.[/red]")
+        raise typer.Exit(code=1) from None
 
     if by.lower() == "asset":
         if target_asset:
