@@ -28,6 +28,49 @@ def format_roi(val: float) -> str:
         return "[dim]0.00%[/dim]"
 
 
+def _render_half(earnings_list: list[float], max_val: float, height: int, is_positive: bool) -> list[str]:
+    rows = []
+    y_range = range(height, 0, -1) if is_positive else range(1, height + 1)
+    color = "green" if is_positive else "red"
+
+    for y in y_range:
+        row_chars = []
+        for e in earnings_list:
+            matches = (e > 0) if is_positive else (e < 0)
+            if matches:
+                val_h = round((abs(e) / max_val) * height)
+                row_chars.append(f"[{color}]█[/{color}]" if val_h >= y else " ")
+            else:
+                row_chars.append(" ")
+        rows.append("  " + "  ".join(row_chars))
+    return rows
+
+
+def _render_baseline(earnings_list: list[float]) -> str:
+    baseline_chars = []
+    for e in earnings_list:
+        if e > 0:
+            baseline_chars.append("┴")
+        elif e < 0:
+            baseline_chars.append("┬")
+        else:
+            baseline_chars.append("─")
+    return "──" + "──".join(baseline_chars)
+
+
+def _render_labels(months: list[str]) -> list[str]:
+    label_rows = ["", "", "", "", ""]
+    for m in months:
+        y_part = m[2:4]
+        m_part = m[5:7]
+        label_rows[0] += f" {y_part[0]} "
+        label_rows[1] += f" {y_part[1]} "
+        label_rows[2] += " - "
+        label_rows[3] += f" {m_part[0]} "
+        label_rows[4] += f" {m_part[1]} "
+    return [" " + lr for lr in label_rows]
+
+
 def render_vertical_bar_chart(monthly_stats: list[MonthlyStats], height: int = 6) -> str:
     """Render a vertical bar chart of monthly earnings."""
     if not monthly_stats:
@@ -41,52 +84,9 @@ def render_vertical_bar_chart(monthly_stats: list[MonthlyStats], height: int = 6
         max_val = 1.0
 
     rows = []
-
-    # Positive half
-    for y in range(height, 0, -1):
-        row_chars = []
-        for e in earnings_list:
-            if e > 0:
-                val_h = round((e / max_val) * height)
-                row_chars.append("[green]█[/green]" if val_h >= y else " ")
-            else:
-                row_chars.append(" ")
-        rows.append("  " + "  ".join(row_chars))
-
-    # Baseline
-    baseline_chars = []
-    for e in earnings_list:
-        if e > 0:
-            baseline_chars.append("┴")
-        elif e < 0:
-            baseline_chars.append("┬")
-        else:
-            baseline_chars.append("─")
-    rows.append("──" + "──".join(baseline_chars))
-
-    # Negative half
-    for y in range(1, height + 1):
-        row_chars = []
-        for e in earnings_list:
-            if e < 0:
-                val_h = round((abs(e) / max_val) * height)
-                row_chars.append("[red]█[/red]" if val_h >= y else " ")
-            else:
-                row_chars.append(" ")
-        rows.append("  " + "  ".join(row_chars))
-
-    # Slanted/vertical labels
-    label_rows = ["", "", "", "", ""]
-    for m in months:
-        y_part = m[2:4]
-        m_part = m[5:7]
-        label_rows[0] += f" {y_part[0]} "
-        label_rows[1] += f" {y_part[1]} "
-        label_rows[2] += " - "
-        label_rows[3] += f" {m_part[0]} "
-        label_rows[4] += f" {m_part[1]} "
-
-    for lr in label_rows:
-        rows.append(" " + lr)
+    rows.extend(_render_half(earnings_list, max_val, height, is_positive=True))
+    rows.append(_render_baseline(earnings_list))
+    rows.extend(_render_half(earnings_list, max_val, height, is_positive=False))
+    rows.extend(_render_labels(months))
 
     return "\n".join(rows)

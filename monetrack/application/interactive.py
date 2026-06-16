@@ -71,6 +71,56 @@ def build_completer(service: PortfolioService) -> NestedCompleter:
     )
 
 
+def _execute_command(args: list[str], app: typer.Typer, session: PromptSession, service: PortfolioService) -> None:
+    """Execute a parsed command and update the autocomplete session if needed."""
+    try:
+        app(args=args, standalone_mode=False)
+
+        if args[0] == "import" or (
+            len(args) >= 2
+            and args[0] == "asset"
+            and args[1] in ["create", "delete", "archive", "unarchive", "rename", "update"]
+        ):
+            session.completer = build_completer(service)
+    except click.exceptions.Exit:
+        pass
+    except click.exceptions.Abort:
+        rprint("[yellow]Aborted.[/yellow]")
+    except click.ClickException as e:
+        rprint(f"[red]Error: {e}[/red]")
+    except Exception as e:
+        rprint(f"[red]Unhandled error: {e!s}[/red]")
+
+
+def _process_line(text: str, app: typer.Typer, session: PromptSession, service: PortfolioService) -> bool:
+    """Process a single input line. Returns True if the shell loop should exit."""
+    text = text.strip()
+    if not text:
+        return False
+
+    try:
+        args = shlex.split(text)
+    except ValueError as e:
+        rprint(f"[red]Error parsing arguments: {e!s}[/red]")
+        return False
+
+    if not args:
+        return False
+
+    if args[0] in ["exit", "quit"]:
+        return True
+
+    if args[0] == "help":
+        try:
+            app(args=["--help"], standalone_mode=False)
+        except Exception:
+            pass
+        return False
+
+    _execute_command(args, app, session, service)
+    return False
+
+
 def interactive_shell(service: PortfolioService, app: typer.Typer) -> None:
     """Launch the interactive command shell with autocompletion."""
     rprint("\n[bold magenta]MonetRack Interactive Shell[/bold magenta]")
@@ -90,45 +140,7 @@ def interactive_shell(service: PortfolioService, app: typer.Typer) -> None:
         except EOFError:
             break
 
-        text = text.strip()
-        if not text:
-            continue
-
-        try:
-            args = shlex.split(text)
-        except ValueError as e:
-            rprint(f"[red]Error parsing arguments: {e!s}[/red]")
-            continue
-
-        if not args:
-            continue
-
-        if args[0] in ["exit", "quit"]:
+        if _process_line(text, app, session, service):
             break
-
-        if args[0] == "help":
-            try:
-                app(args=["--help"], standalone_mode=False)
-            except Exception:
-                pass
-            continue
-
-        try:
-            app(args=args, standalone_mode=False)
-
-            if args[0] == "import" or (
-                len(args) >= 2
-                and args[0] == "asset"
-                and args[1] in ["create", "delete", "archive", "unarchive", "rename", "update"]
-            ):
-                session.completer = build_completer(service)
-        except click.exceptions.Exit:
-            pass
-        except click.exceptions.Abort:
-            rprint("[yellow]Aborted.[/yellow]")
-        except click.ClickException as e:
-            rprint(f"[red]Error: {e}[/red]")
-        except Exception as e:
-            rprint(f"[red]Unhandled error: {e!s}[/red]")
 
     rprint("[magenta]Goodbye![/magenta]")
