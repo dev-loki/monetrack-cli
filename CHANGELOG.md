@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-16
+
+### Added
+- Premium glassmorphism dark theme portfolio Web Dashboard.
+- FastAPI backend server (`uv run monetrack web`) serving static assets and REST API endpoints.
+- Inter-based typography, smooth hover transition animations, and modern grid-layout views.
+- Interactive Chart.js donut allocation and bar performance charts.
+- Modals, forms, list management, and real-time custom feedback toast notifications.
+
+---
+
 ## [1.0.1] - 2026-06-16
 
 ### Added

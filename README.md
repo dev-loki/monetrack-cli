@@ -70,6 +70,13 @@ Running the command without any arguments launches the interactive autocomplete 
 uv run monetrack
 ```
 
+### Launch Web Dashboard
+You can launch the modern, premium FastAPI-based web dashboard by running:
+```bash
+uv run monetrack web
+```
+This runs a local web server (by default at `http://127.0.0.1:8000`) displaying a glassmorphism portfolio dashboard, dynamic allocations donut chart, performance statistics, and interactive forms to log new assets, transactions, and snapshots.
+
 ### CLI Commands
 
 #### 1. Assets

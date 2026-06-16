@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MonetRack - Portfolio Dashboard</title>
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- App Wrapper -->
+  <div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+        <span class="brand-name">MonetRack</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-link active" data-tab="overview" id="nav-overview">
+          <i class="fa-solid fa-square-poll-vertical"></i>
+          <span>Overview</span>
+        </button>
+        <button class="nav-link" data-tab="assets" id="nav-assets">
+          <i class="fa-solid fa-wallet"></i>
+          <span>Assets</span>
+        </button>
+        <button class="nav-link" data-tab="transactions" id="nav-transactions">
+          <i class="fa-solid fa-money-bill-transfer"></i>
+          <span>Transactions</span>
+        </button>
+        <button class="nav-link" data-tab="snapshots" id="nav-snapshots">
+          <i class="fa-solid fa-camera"></i>
+          <span>Valuations</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="theme-info">
+          <i class="fa-solid fa-circle-half-stroke"></i>
+          <span>Premium Edition</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <header class="main-header">
+        <h1 id="page-title">Portfolio Dashboard</h1>
+        <div class="header-actions">
+          <button class="btn btn-primary" id="btn-quick-log">
+            <i class="fa-solid fa-plus"></i> Quick Action
+          </button>
+        </div>
+      </header>
+
+      <!-- Dynamic Tab Content Container -->
+      <div class="content-container">
+
+        <!-- OVERVIEW TAB -->
+        <section id="tab-overview" class="tab-pane active">
+
+          <!-- Key Metrics Grid -->
+          <div class="metrics-grid">
+            <div class="metric-card glass-card">
+              <div class="metric-header">
+                <span class="metric-title">Net Invested</span>
+                <i class="fa-solid fa-piggy-bank text-indigo"></i>
+              </div>
+              <div class="metric-value" id="val-net-invested">0.00 €</div>
+              <p class="metric-desc">Total cash deposits minus withdrawals</p>
+            </div>
+
+            <div class="metric-card glass-card">
+              <div class="metric-header">
+                <span class="metric-title">Current Valuation</span>
+                <i class="fa-solid fa-vault text-blue"></i>
+              </div>
+              <div class="metric-value" id="val-current-value">0.00 €</div>
+              <p class="metric-desc">Portfolio value based on latest snapshots</p>
+            </div>
+
+            <div class="metric-card glass-card">
+              <div class="metric-header">
+                <span class="metric-title">Total Profit / Loss</span>
+                <i class="fa-solid fa-arrow-trend-up text-green" id="profit-icon"></i>
+              </div>
+              <div class="metric-value" id="val-earnings">0.00 €</div>
+              <p class="metric-desc">Accumulated net earnings and yield</p>
+            </div>
+
+            <div class="metric-card glass-card">
+              <div class="metric-header">
+                <span class="metric-title">Return on Investment</span>
+                <i class="fa-solid fa-percent text-amber"></i>
+              </div>
+              <div class="metric-value" id="val-roi">0.00 %</div>
+              <p class="metric-desc">ROI percentage based on net invested capital</p>
+            </div>
+          </div>
+
+          <!-- Charts and Analytics -->
+          <div class="analytics-grid">
+            <div class="chart-card glass-card">
+              <h3>Portfolio Allocation</h3>
+              <div class="chart-container-donut">
+                <canvas id="donut-allocation"></canvas>
+              </div>
+            </div>
+            <div class="chart-card glass-card">
+              <h3>Performance Overview</h3>
+              <div class="chart-container-bar">
+                <canvas id="bar-performance"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Assets Stats List -->
+          <div class="table-card glass-card">
+            <div class="table-header-row">
+              <h3>Asset Allocations</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="table-overview-assets">
+                <thead>
+                  <tr>
+                    <th>Asset Name</th>
+                    <th>Type</th>
+                    <th>Net Invested</th>
+                    <th>Current Value</th>
+                    <th>Net Return</th>
+                    <th>ROI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Filled dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ASSETS TAB -->
+        <section id="tab-assets" class="tab-pane">
+          <div class="tab-columns">
+            <div class="column-large glass-card">
+              <div class="card-header">
+                <h3>Registered Assets</h3>
+              </div>
+              <div class="assets-list" id="list-assets">
+                <!-- Filled dynamically -->
+              </div>
+            </div>
+
+            <div class="column-small glass-card">
+              <div class="card-header">
+                <h3>Add New Asset</h3>
+              </div>
+              <form id="form-add-asset" class="form-standard">
+                <div class="form-group">
+                  <label for="asset-name">Asset Name *</label>
+                  <input type="text" id="asset-name" placeholder="e.g. Scalable S&P 500 ETF" required>
+                </div>
+                <div class="form-group">
+                  <label for="asset-type">Asset Type *</label>
+                  <select id="asset-type" required>
+                    <option value="etf">ETF</option>
+                    <option value="stock">Stock</option>
+                    <option value="p2p">P2P Lending</option>
+                    <option value="crypto">Cryptocurrency</option>
+                    <option value="other">Other / Alternative</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="asset-isin">ISIN (Optional)</label>
+                  <input type="text" id="asset-isin" placeholder="e.g. IE00B5BMR087">
+                </div>
+                <div class="form-group">
+                  <label for="asset-wkn">WKN (Optional)</label>
+                  <input type="text" id="asset-wkn" placeholder="e.g. A1JX52">
+                </div>
+                <div class="form-group">
+                  <label for="asset-comment">Comments / Description</label>
+                  <textarea id="asset-comment" placeholder="Optional comments..." rows="3"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Save Asset</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- TRANSACTIONS TAB -->
+        <section id="tab-transactions" class="tab-pane">
+          <div class="tab-columns">
+            <div class="column-large glass-card">
+              <div class="card-header">
+                <h3>Transaction History</h3>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table" id="table-transactions">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Asset Name</th>
+                      <th>Type</th>
+                      <th>Amount</th>
+                      <th>Comments</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Filled dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="column-small glass-card">
+              <div class="card-header">
+                <h3>Log Transaction</h3>
+              </div>
+              <form id="form-add-transaction" class="form-standard">
+                <div class="form-group">
+                  <label for="tx-asset-id">Select Asset *</label>
+                  <select id="tx-asset-id" required>
+                    <!-- Filled dynamically -->
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="tx-type">Transaction Type *</label>
+                  <select id="tx-type" required>
+                    <option value="invest">Invest (Deposit / Buy)</option>
+                    <option value="withdraw">Withdraw (Withdrawal / Sell)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="tx-amount">Amount (EUR) *</label>
+                  <input type="number" id="tx-amount" step="0.01" min="0.01" placeholder="0.00" required>
+                </div>
+                <div class="form-group">
+                  <label for="tx-date">Date *</label>
+                  <input type="date" id="tx-date" required>
+                </div>
+                <div class="form-group">
+                  <label for="tx-comment">Comments</label>
+                  <input type="text" id="tx-comment" placeholder="e.g. Regular monthly purchase">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Save Transaction</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- SNAPSHOTS TAB -->
+        <section id="tab-snapshots" class="tab-pane">
+          <div class="tab-columns">
+            <div class="column-large glass-card">
+              <div class="card-header">
+                <h3>Valuation Snapshots</h3>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table" id="table-snapshots">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Asset Name</th>
+                      <th>Valuation</th>
+                      <th>Comments</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Filled dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="column-small glass-card">
+              <div class="card-header">
+                <h3>Log Asset Valuation</h3>
+              </div>
+              <form id="form-add-snapshot" class="form-standard">
+                <div class="form-group">
+                  <label for="snap-asset-id">Select Asset *</label>
+                  <select id="snap-asset-id" required>
+                    <!-- Filled dynamically -->
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="snap-value">Current Asset Value *</label>
+                  <input type="number" id="snap-value" step="0.01" min="0.00" placeholder="0.00" required>
+                </div>
+                <div class="form-group">
+                  <label for="snap-date">Valuation Date *</label>
+                  <input type="date" id="snap-date" required>
+                </div>
+                <div class="form-group">
+                  <label for="snap-comment">Comments</label>
+                  <input type="text" id="snap-comment" placeholder="e.g. End of month check">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Save Snapshot</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Quick Action Modal -->
+  <div class="modal" id="modal-quick-action">
+    <div class="modal-dialog">
+      <div class="modal-content glass-card">
+        <div class="modal-header">
+          <h2>Quick Action</h2>
+          <button class="modal-close" id="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">Quickly record a transaction or valuation snapshot.</p>
+          <div class="modal-grid">
+            <button class="modal-action-btn" id="btn-modal-invest">
+              <i class="fa-solid fa-circle-down text-indigo"></i>
+              <span>Log Transaction</span>
+            </button>
+            <button class="modal-action-btn" id="btn-modal-snapshot">
+              <i class="fa-solid fa-camera text-emerald"></i>
+              <span>Log Valuation</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Custom Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>

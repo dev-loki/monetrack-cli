@@ -763,6 +763,17 @@ def show_monthly_stats_table(
         rprint("")
 
 
+@app.command(name="web")
+def start_web(
+    port: int = typer.Option(8000, "--port", "-p", help="Port to run the web server on"),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host address to bind to"),
+):
+    """Launch the FastAPI Web Dashboard."""
+    import uvicorn
+
+    uvicorn.run("monetrack.application.web:app", host=host, port=port, reload=False)
+
+
 # Entry point helper for Typer setup
 def main():
     app()
