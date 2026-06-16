@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from monetrack.services.portfolio_service import PortfolioService
 
 
@@ -164,3 +166,52 @@ def test_service_valuation_scenarios_coverage(portfolio_service: PortfolioServic
     portfolio_service.archive_asset(d_id, True)
     portfolio_service.add_transaction(d_id, "invest", 100.0, "2025-01-05")
     portfolio_service.get_monthly_stats(include_archived=False)
+
+
+def test_service_validation_errors(portfolio_service: PortfolioService) -> None:
+    # 1. Invalid name on create
+    with pytest.raises(ValueError, match="Asset name cannot be empty"):
+        portfolio_service.create_asset("", "stock")
+    with pytest.raises(ValueError, match="Asset name cannot be empty"):
+        portfolio_service.create_asset("  ", "stock")
+
+    # 2. Invalid transaction amount
+    a_id = portfolio_service.create_asset("Asset Val", "stock")
+    with pytest.raises(ValueError, match="Transaction amount must be greater than zero"):
+        portfolio_service.add_transaction(a_id, "invest", 0.0, "2025-01-01")
+    with pytest.raises(ValueError, match="Transaction amount must be greater than zero"):
+        portfolio_service.add_transaction(a_id, "invest", -10.0, "2025-01-01")
+
+    # 3. Invalid date format
+    with pytest.raises(ValueError, match="Invalid date format"):
+        portfolio_service.add_transaction(a_id, "invest", 10.0, "2025/01/01")
+
+    # 4. Invalid snapshot value
+    with pytest.raises(ValueError, match="Snapshot value cannot be negative"):
+        portfolio_service.add_snapshot(a_id, -5.0, "2025-01-01")
+
+    # 5. Invalid date format on snapshot
+    with pytest.raises(ValueError, match="Invalid date format"):
+        portfolio_service.add_snapshot(a_id, 100.0, "invalid-date")
+
+    # 6. Invalid name on update_asset
+    with pytest.raises(ValueError, match="Asset name cannot be empty"):
+        portfolio_service.update_asset(a_id, name="")
+
+    # 7. Invalid transaction amount on update
+    tx_id = portfolio_service.add_transaction(a_id, "invest", 10.0, "2025-01-01")
+    with pytest.raises(ValueError, match="Transaction amount must be greater than zero"):
+        portfolio_service.update_transaction(tx_id, amount=0.0)
+
+    # 8. Invalid date format on update_transaction
+    with pytest.raises(ValueError, match="Invalid date format"):
+        portfolio_service.update_transaction(tx_id, timestamp="invalid-date")
+
+    # 9. Invalid snapshot value on update
+    snap_id = portfolio_service.add_snapshot(a_id, 10.0, "2025-01-01")
+    with pytest.raises(ValueError, match="Snapshot value cannot be negative"):
+        portfolio_service.update_snapshot(snap_id, value=-1.0)
+
+    # 10. Invalid date format on update_snapshot
+    with pytest.raises(ValueError, match="Invalid date format"):
+        portfolio_service.update_snapshot(snap_id, timestamp="invalid-date")

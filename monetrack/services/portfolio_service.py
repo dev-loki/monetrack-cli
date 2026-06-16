@@ -1,4 +1,5 @@
 import csv
+import datetime
 from pathlib import Path
 
 from monetrack.domain.models import (
@@ -22,6 +23,12 @@ class PortfolioService:
     def init_db(self) -> None:
         self.db.init_db()
 
+    def _validate_date(self, date_str: str) -> None:
+        try:
+            datetime.date.fromisoformat(date_str)
+        except ValueError as err:
+            raise ValueError(f"Invalid date format '{date_str}'. Must be YYYY-MM-DD.") from err
+
     def create_asset(
         self,
         name: str,
@@ -30,6 +37,8 @@ class PortfolioService:
         wkn: str | None = None,
         comment: str | None = None,
     ) -> int:
+        if not name or not name.strip():
+            raise ValueError("Asset name cannot be empty.")
         atype = AssetType(asset_type) if isinstance(asset_type, str) else asset_type
         asset = Asset(
             id=None,
@@ -65,6 +74,9 @@ class PortfolioService:
         timestamp: str,
         comment: str | None = None,
     ) -> int:
+        if amount <= 0:
+            raise ValueError("Transaction amount must be greater than zero.")
+        self._validate_date(timestamp)
         ttype = TransactionType(tx_type) if isinstance(tx_type, str) else tx_type
         tx = Transaction(
             id=None,
@@ -83,6 +95,9 @@ class PortfolioService:
         timestamp: str,
         comment: str | None = None,
     ) -> int:
+        if value < 0:
+            raise ValueError("Snapshot value cannot be negative.")
+        self._validate_date(timestamp)
         snap = Snapshot(
             id=None,
             asset_id=asset_id,
@@ -422,6 +437,8 @@ class PortfolioService:
         wkn: str | None = None,
         comment: str | None = None,
     ) -> None:
+        if name is not None and (not name or not name.strip()):
+            raise ValueError("Asset name cannot be empty.")
         atype = AssetType(type) if isinstance(type, str) else type
         self.db.update_asset(asset_id, name, atype, isin, wkn, comment)
 
@@ -433,6 +450,10 @@ class PortfolioService:
         comment: str | None = None,
         type: TransactionType | str | None = None,
     ) -> None:
+        if amount is not None and amount <= 0:
+            raise ValueError("Transaction amount must be greater than zero.")
+        if timestamp is not None:
+            self._validate_date(timestamp)
         ttype = TransactionType(type) if isinstance(type, str) else type
         self.db.update_transaction(tx_id, amount, timestamp, comment, ttype)
 
@@ -443,6 +464,10 @@ class PortfolioService:
         timestamp: str | None = None,
         comment: str | None = None,
     ) -> None:
+        if value is not None and value < 0:
+            raise ValueError("Snapshot value cannot be negative.")
+        if timestamp is not None:
+            self._validate_date(timestamp)
         self.db.update_snapshot(snap_id, value, timestamp, comment)
 
     def export_to_csv(self, export_dir: Path) -> None:
