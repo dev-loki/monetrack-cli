@@ -44,9 +44,9 @@ class PortfolioService:
             id=None,
             name=name,
             type=atype,
-            isin=isin,
-            wkn=wkn,
-            comment=comment,
+            isin=isin or "",
+            wkn=wkn or "",
+            comment=comment or "",
             is_archived=False,
         )
         return self.db.create_asset(asset)
@@ -84,7 +84,7 @@ class PortfolioService:
             timestamp=timestamp,
             type=ttype,
             amount=amount,
-            comment=comment,
+            comment=comment or "",
         )
         return self.db.add_transaction(tx)
 
@@ -103,7 +103,7 @@ class PortfolioService:
             asset_id=asset_id,
             timestamp=timestamp,
             value=value,
-            comment=comment,
+            comment=comment or "",
         )
         return self.db.add_snapshot(snap)
 
@@ -480,9 +480,7 @@ class PortfolioService:
             writer = csv.writer(f)
             writer.writerow(["id", "name", "type", "isin", "wkn", "comment", "is_archived"])
             for a in assets:
-                writer.writerow(
-                    [a.id, a.name, a.type.value, a.isin or "", a.wkn or "", a.comment or "", 1 if a.is_archived else 0]
-                )
+                writer.writerow([a.id, a.name, a.type.value, a.isin, a.wkn, a.comment, 1 if a.is_archived else 0])
 
         # 2. Export transactions & snapshots
         txs = self.db.list_transactions()
@@ -490,14 +488,14 @@ class PortfolioService:
             writer = csv.writer(f)
             writer.writerow(["id", "asset_id", "timestamp", "type", "amount", "comment"])
             for tx in txs:
-                writer.writerow([tx.id, tx.asset_id, tx.timestamp, tx.type.value, tx.amount, tx.comment or ""])
+                writer.writerow([tx.id, tx.asset_id, tx.timestamp, tx.type.value, tx.amount, tx.comment])
 
         snaps = self.db.list_snapshots()
         with open(export_dir / "snapshots.csv", "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["id", "asset_id", "timestamp", "value", "comment"])
             for snap in snaps:
-                writer.writerow([snap.id, snap.asset_id, snap.timestamp, snap.value, snap.comment or ""])
+                writer.writerow([snap.id, snap.asset_id, snap.timestamp, snap.value, snap.comment])
 
     def import_from_csv(self, import_dir: Path) -> dict[str, int]:
         """Import assets, transactions, and snapshots from CSVs in the specified directory."""
@@ -520,9 +518,9 @@ class PortfolioService:
                     if existing:
                         new_id = existing.id
                     else:
-                        isin = row.get("isin") or None
-                        wkn = row.get("wkn") or None
-                        comment = row.get("comment") or None
+                        isin = row.get("isin") or ""
+                        wkn = row.get("wkn") or ""
+                        comment = row.get("comment") or ""
                         is_archived = int(row.get("is_archived", 0))
 
                         new_asset = Asset(
@@ -550,7 +548,7 @@ class PortfolioService:
                     old_asset_id = int(row["asset_id"])
                     new_asset_id = asset_id_map.get(old_asset_id)
                     if new_asset_id is not None:
-                        comment = row.get("comment") or None
+                        comment = row.get("comment") or ""
                         tx = Transaction(
                             id=None,
                             asset_id=new_asset_id,
@@ -570,7 +568,7 @@ class PortfolioService:
                     old_asset_id = int(row["asset_id"])
                     new_asset_id = asset_id_map.get(old_asset_id)
                     if new_asset_id is not None:
-                        comment = row.get("comment") or None
+                        comment = row.get("comment") or ""
                         snap = Snapshot(
                             id=None,
                             asset_id=new_asset_id,

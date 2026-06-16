@@ -20,9 +20,9 @@ class Asset:
     id: int | None
     name: str
     type: AssetType
-    isin: str | None = None
-    wkn: str | None = None
-    comment: str | None = None
+    isin: str = ""
+    wkn: str = ""
+    comment: str = ""
     is_archived: bool = False
 
 
@@ -33,7 +33,7 @@ class Transaction:
     timestamp: str
     type: TransactionType
     amount: float
-    comment: str | None = None
+    comment: str = ""
 
 
 @dataclass(slots=True)
@@ -42,7 +42,7 @@ class Snapshot:
     asset_id: int
     timestamp: str
     value: float
-    comment: str | None = None
+    comment: str = ""
 
 
 @dataclass(slots=True)
@@ -85,5 +85,5 @@ class HistoryEvent:
     timestamp: str
     event_type: str  # invest, withdraw, snapshot
     value: float
-    comment: str | None
+    comment: str
     asset_name: str

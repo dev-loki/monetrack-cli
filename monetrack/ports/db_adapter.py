@@ -112,9 +112,9 @@ class SQLiteDatabaseAdapter(DatabasePort):
                 (
                     asset.name,
                     asset.type.value,
-                    asset.isin,
-                    asset.wkn,
-                    asset.comment,
+                    asset.isin if asset.isin != "" else None,
+                    asset.wkn if asset.wkn != "" else None,
+                    asset.comment if asset.comment != "" else None,
                     1 if asset.is_archived else 0,
                 ),
             )
@@ -135,9 +135,9 @@ class SQLiteDatabaseAdapter(DatabasePort):
                     id=row["id"],
                     name=row["name"],
                     type=AssetType(row["type"]),
-                    isin=row["isin"],
-                    wkn=row["wkn"],
-                    comment=row["comment"],
+                    isin=row["isin"] or "",
+                    wkn=row["wkn"] or "",
+                    comment=row["comment"] or "",
                     is_archived=bool(row["is_archived"]),
                 )
                 for row in rows
@@ -166,9 +166,9 @@ class SQLiteDatabaseAdapter(DatabasePort):
                     id=row["id"],
                     name=row["name"],
                     type=AssetType(row["type"]),
-                    isin=row["isin"],
-                    wkn=row["wkn"],
-                    comment=row["comment"],
+                    isin=row["isin"] or "",
+                    wkn=row["wkn"] or "",
+                    comment=row["comment"] or "",
                     is_archived=bool(row["is_archived"]),
                 )
             return None
@@ -199,7 +199,7 @@ class SQLiteDatabaseAdapter(DatabasePort):
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO transactions (asset_id, type, amount, timestamp, comment) VALUES (?, ?, ?, ?, ?)",
-                (tx.asset_id, tx.type.value, tx.amount, tx.timestamp, tx.comment),
+                (tx.asset_id, tx.type.value, tx.amount, tx.timestamp, tx.comment if tx.comment != "" else None),
             )
             if cursor.lastrowid is None:
                 raise RuntimeError("Database insert failed: lastrowid is None")
@@ -212,7 +212,7 @@ class SQLiteDatabaseAdapter(DatabasePort):
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO snapshots (asset_id, value, timestamp, comment) VALUES (?, ?, ?, ?)",
-                (snap.asset_id, snap.value, snap.timestamp, snap.comment),
+                (snap.asset_id, snap.value, snap.timestamp, snap.comment if snap.comment != "" else None),
             )
             if cursor.lastrowid is None:
                 raise RuntimeError("Database insert failed: lastrowid is None")
@@ -230,7 +230,7 @@ class SQLiteDatabaseAdapter(DatabasePort):
                     timestamp=row["timestamp"],
                     type=TransactionType(row["type"]),
                     amount=row["amount"],
-                    comment=row["comment"],
+                    comment=row["comment"] or "",
                 )
                 for row in rows
             ]
@@ -246,7 +246,7 @@ class SQLiteDatabaseAdapter(DatabasePort):
                     asset_id=row["asset_id"],
                     timestamp=row["timestamp"],
                     value=row["value"],
-                    comment=row["comment"],
+                    comment=row["comment"] or "",
                 )
                 for row in rows
             ]
@@ -302,7 +302,7 @@ class SQLiteDatabaseAdapter(DatabasePort):
                     timestamp=row["timestamp"],
                     event_type=row["event_type"],
                     value=row["value"],
-                    comment=row["comment"],
+                    comment=row["comment"] or "",
                     asset_name=row["asset_name"],
                 )
                 for row in rows

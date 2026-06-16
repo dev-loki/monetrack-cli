@@ -294,9 +294,9 @@ def test_db_adapter_update_operations(db_adapter: SQLiteDatabaseAdapter) -> None
     db_adapter.update_asset(a_id, isin="", wkn="", comment="")
     found_cleared = db_adapter.find_asset("New Name")
     assert found_cleared is not None
-    assert found_cleared.isin is None
-    assert found_cleared.wkn is None
-    assert found_cleared.comment is None
+    assert found_cleared.isin == ""
+    assert found_cleared.wkn == ""
+    assert found_cleared.comment == ""
 
     # Test empty update does nothing
     db_adapter.update_asset(a_id)
