@@ -44,6 +44,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
+          cache-suffix: "typecheck"
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -67,6 +68,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
+          cache-suffix: "prek"
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -90,6 +92,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
+          cache-suffix: "test"
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -115,6 +118,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
+          cache-suffix: "release"
 
       - name: Build packages
         run: uv build
