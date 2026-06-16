@@ -77,12 +77,11 @@ class PortfolioService:
         if amount <= 0:
             raise ValueError("Transaction amount must be greater than zero.")
         self._validate_date(timestamp)
-        ttype = TransactionType(tx_type) if isinstance(tx_type, str) else tx_type
         tx = Transaction(
             id=None,
             asset_id=asset_id,
             timestamp=timestamp,
-            type=ttype,
+            type=TransactionType(tx_type),
             amount=amount,
             comment=comment or "",
         )
@@ -207,36 +206,26 @@ class PortfolioService:
         snaps = snapshots_by_asset.get(asset_id, [])
         latest_snap = None
         for snap in snaps:
-            if snap.timestamp < before_timestamp:
-                latest_snap = snap
-            else:
+            if snap.timestamp >= before_timestamp:
                 break
+            latest_snap = snap
+
+        start_time = latest_snap.timestamp if latest_snap else ""
+        snap_value = latest_snap.value if latest_snap else 0.0
 
         txs = transactions_by_asset.get(asset_id, [])
-        if latest_snap:
-            snap_value = latest_snap.value
-            snap_time = latest_snap.timestamp
-            flow = 0.0
-            for tx in txs:
-                if tx.timestamp > snap_time and tx.timestamp < before_timestamp:
-                    if tx.type == TransactionType.INVEST:
+        flow = 0.0
+        for tx in txs:
+            if tx.timestamp >= before_timestamp:
+                break
+            if tx.timestamp > start_time:
+                match tx.type:
+                    case TransactionType.INVEST:
                         flow += tx.amount
-                    elif tx.type == TransactionType.WITHDRAW:
+                    case TransactionType.WITHDRAW:
                         flow -= tx.amount
-                elif tx.timestamp >= before_timestamp:
-                    break
-            return snap_value + flow
-        else:
-            flow = 0.0
-            for tx in txs:
-                if tx.timestamp < before_timestamp:
-                    if tx.type == TransactionType.INVEST:
-                        flow += tx.amount
-                    elif tx.type == TransactionType.WITHDRAW:
-                        flow -= tx.amount
-                else:
-                    break
-            return flow
+
+        return snap_value + flow
 
     def _get_valuation_before_in_memory(
         self,
