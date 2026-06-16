@@ -1,4 +1,5 @@
 import datetime
+from typing import Any, cast
 
 import typer
 from rich import print as rprint
@@ -16,9 +17,22 @@ from monetrack.domain.models import Asset
 from monetrack.ports.db_adapter import SQLiteDatabaseAdapter
 from monetrack.services.portfolio_service import PortfolioService
 
-# Initialize Service and Adapters
-db_adapter = SQLiteDatabaseAdapter()
-service = PortfolioService(db_adapter)
+
+class LazyServiceProxy:
+    def __init__(self) -> None:
+        self._service = None
+
+    def _get_service(self) -> PortfolioService:
+        if self._service is None:
+            db_adapter = SQLiteDatabaseAdapter()
+            self._service = PortfolioService(db_adapter)
+        return self._service
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_service(), name)
+
+
+service = cast(PortfolioService, LazyServiceProxy())
 
 # Initialize Typer apps
 app = typer.Typer(
@@ -447,16 +461,16 @@ def history(
     table.add_column("Comment", style="dim")
 
     for ev in events:
-        ev_type = ev.event_type.upper()
-        if ev_type == "INVEST":
-            ev_type_formatted = "[green]INVEST[/green]"
-            val_formatted = f"[green]€{ev.value:,.2f}[/green]"
-        elif ev_type == "WITHDRAW":
-            ev_type_formatted = "[red]WITHDRAW[/red]"
-            val_formatted = f"[red]€{ev.value:,.2f}[/red]"
-        else:
-            ev_type_formatted = "[yellow]SNAPSHOT[/yellow]"
-            val_formatted = f"€{ev.value:,.2f}"
+        match ev.event_type.upper():
+            case "INVEST":
+                ev_type_formatted = "[green]INVEST[/green]"
+                val_formatted = f"[green]€{ev.value:,.2f}[/green]"
+            case "WITHDRAW":
+                ev_type_formatted = "[red]WITHDRAW[/red]"
+                val_formatted = f"[red]€{ev.value:,.2f}[/red]"
+            case _:
+                ev_type_formatted = "[yellow]SNAPSHOT[/yellow]"
+                val_formatted = f"€{ev.value:,.2f}"
 
         table.add_row(ev.timestamp, ev.asset_name, ev_type_formatted, val_formatted, ev.comment or "")
 
