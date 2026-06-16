@@ -17,18 +17,45 @@ MonetRack is a premium command-line investment tracking tool designed to help yo
 
 ## Installation
 
-MonetRack CLI uses the modern and fast Python package manager `uv`.
+MonetRack CLI requires Python >= 3.14 and is managed using the modern and fast Python package manager `uv`.
 
-### Prerequisites
-- Python >= 3.14
-- [uv](https://github.com/astral-sh/uv)
+### 1. Installing the App
 
-### Setup
-Clone the repository and install all dependencies:
+#### Option A: Install from Source (Development)
+Clone the repository and sync the dependencies using `uv`:
 ```bash
 git clone https://github.com/your-username/monetrack.git
 cd monetrack
 uv sync
+```
+This sets up a virtual environment and installs the package in editable mode. You can now run the app using `uv run monetrack`.
+
+#### Option B: Install from Wheel (Production)
+If you have a built wheel distribution (e.g., from the releases page or local build), install it using `uv` or `pip`:
+```bash
+# Using uv (recommended)
+uv pip install dist/monetrack-1.0.0-py3-none-any.whl
+
+# Using standard pip
+pip install dist/monetrack-1.0.0-py3-none-any.whl
+```
+Once installed, the `monetrack` command will be globally available in your environment's path.
+
+---
+
+### 2. Setting up Git Hooks with `prek`
+
+To ensure code quality and style standards are met, you can install `prek` as a local git hook.
+
+From the root of the repository, run:
+```bash
+uv run prek install
+```
+This installs the `prek` hooks into your local git repository. Once installed, `prek` will automatically run all checks (formatting, typechecking, etc.) every time you run `git commit`.
+
+To run the hooks manually on all files at any time, run:
+```bash
+uv run prek run --all-files
 ```
 
 ---
