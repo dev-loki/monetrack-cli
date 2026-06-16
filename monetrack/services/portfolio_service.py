@@ -1,5 +1,6 @@
 import csv
 import datetime
+from collections.abc import Iterator
 from pathlib import Path
 
 from monetrack.domain.models import (
@@ -486,86 +487,72 @@ class PortfolioService:
             for snap in snaps:
                 writer.writerow([snap.id, snap.asset_id, snap.timestamp, snap.value, snap.comment])
 
+    def _iter_csv_rows(self, file_path: Path) -> Iterator[dict[str, str]]:
+        """Yield rows from a CSV file if it exists, managing file context automatically."""
+        if not file_path.exists():
+            return
+        with open(file_path, encoding="utf-8") as f:
+            yield from csv.DictReader(f)
+
     def import_from_csv(self, import_dir: Path) -> dict[str, int]:
         """Import assets, transactions, and snapshots from CSVs in the specified directory."""
-        assets_file = import_dir / "assets.csv"
-        txs_file = import_dir / "transactions.csv"
-        snaps_file = import_dir / "snapshots.csv"
-
         asset_id_map = {}
         imported_assets = 0
         imported_txs = 0
         imported_snaps = 0
 
         # 1. Import assets
-        if assets_file.exists():
-            with open(assets_file, encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    name = row["name"]
-                    existing = self.db.find_asset(name)
-                    if existing:
-                        new_id = existing.id
-                    else:
-                        isin = row.get("isin") or ""
-                        wkn = row.get("wkn") or ""
-                        comment = row.get("comment") or ""
-                        is_archived = int(row.get("is_archived", 0))
+        for row in self._iter_csv_rows(import_dir / "assets.csv"):
+            name = row["name"]
+            existing = self.db.find_asset(name)
+            if existing:
+                new_id = existing.id
+            else:
+                is_archived = int(row.get("is_archived", 0))
+                new_asset = Asset(
+                    id=None,
+                    name=name,
+                    type=AssetType(row["type"]),
+                    isin=row.get("isin") or "",
+                    wkn=row.get("wkn") or "",
+                    comment=row.get("comment") or "",
+                    is_archived=bool(is_archived),
+                )
+                new_id = self.db.create_asset(new_asset)
+                if is_archived:
+                    self.db.archive_asset(new_id, True)
+                imported_assets += 1
 
-                        new_asset = Asset(
-                            id=None,
-                            name=name,
-                            type=AssetType(row["type"]),
-                            isin=isin,
-                            wkn=wkn,
-                            comment=comment,
-                            is_archived=bool(is_archived),
-                        )
-                        new_id = self.db.create_asset(new_asset)
-                        if is_archived:
-                            self.db.archive_asset(new_id, True)
-                        imported_assets += 1
-
-                    if new_id is not None:
-                        asset_id_map[int(row["id"])] = new_id
+            if new_id is not None:
+                asset_id_map[int(row["id"])] = new_id
 
         # 2. Import transactions
-        if txs_file.exists():
-            with open(txs_file, encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    old_asset_id = int(row["asset_id"])
-                    new_asset_id = asset_id_map.get(old_asset_id)
-                    if new_asset_id is not None:
-                        comment = row.get("comment") or ""
-                        tx = Transaction(
-                            id=None,
-                            asset_id=new_asset_id,
-                            timestamp=row["timestamp"],
-                            type=TransactionType(row["type"]),
-                            amount=float(row["amount"]),
-                            comment=comment,
-                        )
-                        self.db.add_transaction(tx)
-                        imported_txs += 1
+        for row in self._iter_csv_rows(import_dir / "transactions.csv"):
+            old_asset_id = int(row["asset_id"])
+            if (new_asset_id := asset_id_map.get(old_asset_id)) is not None:
+                tx = Transaction(
+                    id=None,
+                    asset_id=new_asset_id,
+                    timestamp=row["timestamp"],
+                    type=TransactionType(row["type"]),
+                    amount=float(row["amount"]),
+                    comment=row.get("comment") or "",
+                )
+                self.db.add_transaction(tx)
+                imported_txs += 1
 
         # 3. Import snapshots
-        if snaps_file.exists():
-            with open(snaps_file, encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    old_asset_id = int(row["asset_id"])
-                    new_asset_id = asset_id_map.get(old_asset_id)
-                    if new_asset_id is not None:
-                        comment = row.get("comment") or ""
-                        snap = Snapshot(
-                            id=None,
-                            asset_id=new_asset_id,
-                            timestamp=row["timestamp"],
-                            value=float(row["value"]),
-                            comment=comment,
-                        )
-                        self.db.add_snapshot(snap)
-                        imported_snaps += 1
+        for row in self._iter_csv_rows(import_dir / "snapshots.csv"):
+            old_asset_id = int(row["asset_id"])
+            if (new_asset_id := asset_id_map.get(old_asset_id)) is not None:
+                snap = Snapshot(
+                    id=None,
+                    asset_id=new_asset_id,
+                    timestamp=row["timestamp"],
+                    value=float(row["value"]),
+                    comment=row.get("comment") or "",
+                )
+                self.db.add_snapshot(snap)
+                imported_snaps += 1
 
         return {"assets": imported_assets, "transactions": imported_txs, "snapshots": imported_snaps}

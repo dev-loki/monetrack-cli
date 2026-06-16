@@ -112,6 +112,12 @@ def test_service_export_and_import(portfolio_service: PortfolioService, tmp_path
     assert import_stats_again["assets"] == 0  # no new asset created
     assert import_stats_again["transactions"] == 1  # tx imported again
 
+    # Import from an empty directory should return 0 imports without raising errors
+    empty_dir = tmp_path / "empty_dir"
+    empty_dir.mkdir()
+    empty_stats = portfolio_service.import_from_csv(empty_dir)
+    assert empty_stats == {"assets": 0, "transactions": 0, "snapshots": 0}
+
 
 def test_service_update_operations(portfolio_service: PortfolioService) -> None:
     a_id = portfolio_service.create_asset(name="Old Asset", asset_type="stock")
