@@ -1,6 +1,6 @@
-# MonetRack CLI: Architecture Overview
+# MoneTrack CLI: Architecture Overview
 
-MonetRack has been refactored from a single-file implementation into a robust, type-safe Clean/Hexagonal Architecture. This structure guarantees that core business logic is isolated from database access details and command-line presentation, laying a seamless foundation to overlay a FastAPI API or another database in the future.
+MoneTrack has been refactored from a single-file implementation into a robust, type-safe Clean/Hexagonal Architecture. This structure guarantees that core business logic is isolated from database access details and command-line presentation, laying a seamless foundation to overlay a FastAPI API or another database in the future.
 
 ---
 

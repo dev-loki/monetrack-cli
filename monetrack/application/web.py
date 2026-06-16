@@ -11,8 +11,8 @@ from monetrack.ports.db_adapter import SQLiteDatabaseAdapter
 from monetrack.services.portfolio_service import PortfolioService
 
 app = FastAPI(
-    title="MonetRack API",
-    description="Backend API for MonetRack portfolio tracking dashboard",
+    title="MoneTrack API",
+    description="Backend API for MoneTrack portfolio tracking dashboard",
     version="1.1.0",
 )
 

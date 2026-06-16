@@ -36,7 +36,7 @@ service = cast("PortfolioService", LazyServiceProxy())
 
 # Initialize Typer apps
 app = typer.Typer(
-    help="MonetRack CLI: Track your investments, valuations, and earnings.",
+    help="MoneTrack CLI: Track your investments, valuations, and earnings.",
     rich_markup_mode="rich",
 )
 asset_app = typer.Typer(help="Manage assets (P2P platforms, stocks, ETFs, etc.)")

@@ -123,7 +123,7 @@ def _process_line(text: str, app: typer.Typer, session: PromptSession, service: 
 
 def interactive_shell(service: PortfolioService, app: typer.Typer) -> None:
     """Launch the interactive command shell with autocompletion."""
-    rprint("\n[bold magenta]MonetRack Interactive Shell[/bold magenta]")
+    rprint("\n[bold magenta]MoneTrack Interactive Shell[/bold magenta]")
     rprint(
         "[dim]Type [bold white]help[/bold white] for command usage, "
         "or [bold white]exit[/bold white]/[bold white]quit[/bold white] to leave.[/dim]\n"

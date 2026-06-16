@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-06-16
 
 ### Added
-- First full production release of MonetRack CLI.
+- First full production release of MoneTrack CLI.
 
 ---
 

@@ -1,6 +1,6 @@
 # Architectural Decision Records (ADRs)
 
-This document lists the core architectural decisions made in the development of the MonetRack CLI.
+This document lists the core architectural decisions made in the development of the MoneTrack CLI.
 
 ---
 
@@ -10,7 +10,7 @@ This document lists the core architectural decisions made in the development of 
 Accepted
 
 ### Context
-MonetRack is a command-line investment tracking tool designed to run locally on a user's machine. It requires a relational schema to manage `assets`, `transactions`, and `snapshots` while maintaining relational integrity (e.g. foreign keys linking transactions to assets).
+MoneTrack is a command-line investment tracking tool designed to run locally on a user's machine. It requires a relational schema to manage `assets`, `transactions`, and `snapshots` while maintaining relational integrity (e.g. foreign keys linking transactions to assets).
 
 ### Decision
 We chose SQLite as the storage engine.

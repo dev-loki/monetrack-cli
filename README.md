@@ -1,6 +1,6 @@
-# MonetRack CLI 📈
+# MoneTrack CLI 📈
 
-MonetRack is a premium command-line investment tracking tool designed to help you monitor and calculate the performance of your assets, deposits, and valuations.
+MoneTrack is a premium command-line investment tracking tool designed to help you monitor and calculate the performance of your assets, deposits, and valuations.
 
 ## Features
 
@@ -17,7 +17,7 @@ MonetRack is a premium command-line investment tracking tool designed to help yo
 
 ## Installation
 
-MonetRack CLI requires Python >= 3.14 and is managed using the modern and fast Python package manager `uv`.
+MoneTrack CLI requires Python >= 3.14 and is managed using the modern and fast Python package manager `uv`.
 
 ### 1. Installing the App
 
@@ -62,7 +62,7 @@ uv run prek run --all-files
 
 ## Usage
 
-You can run MonetRack directly or launch the interactive autocomplete shell.
+You can run MoneTrack directly or launch the interactive autocomplete shell.
 
 ### Launch Interactive Shell
 Running the command without any arguments launches the interactive autocomplete shell:
@@ -140,7 +140,7 @@ We enforce code quality checks before commits using `prek`, `ruff`, and `ty`.
 
 ## CI/CD Pipeline
 
-MonetRack CLI is equipped with a modern GitHub Actions pipeline defined in `.github/workflows/ci.yml`.
+MoneTrack CLI is equipped with a modern GitHub Actions pipeline defined in `.github/workflows/ci.yml`.
 
 - **On Pull Requests & Main Pushes**: Runs Ruff (lint/format), Prek hooks, Ty typechecker, and Pytest.
 - **On Tag Pushes (e.g. `v*`)**: Automatically builds packages (`uv build`) and creates a new GitHub Release with the built wheel and source distributions.

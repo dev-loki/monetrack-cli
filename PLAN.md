@@ -1,6 +1,6 @@
-# Implementation Plan: MonetRack CLI
+# Implementation Plan: MoneTrack CLI
 
-This plan outlines the step-by-step development of the MonetRack CLI investment tracking tool.
+This plan outlines the step-by-step development of the MoneTrack CLI investment tracking tool.
 
 ---
 

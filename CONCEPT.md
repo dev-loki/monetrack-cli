@@ -1,20 +1,20 @@
-# Concept: MonetRack CLI Investment Tracker
+# Concept: MoneTrack CLI Investment Tracker
 
-MonetRack is a terminal-based CLI tool designed to track your investments (stocks, ETFs, P2P loans, crypto, etc.) directly from the command line. It uses a local SQLite database stored in compliance with the XDG Base Directory specification.
+MoneTrack is a terminal-based CLI tool designed to track your investments (stocks, ETFs, P2P loans, crypto, etc.) directly from the command line. It uses a local SQLite database stored in compliance with the XDG Base Directory specification.
 
 ---
 
 ## 1. Storage & Database Design
 
 ### SQLite Database
-MonetRack uses **SQLite** as its storage engine:
+MoneTrack uses **SQLite** as its storage engine:
 - **No JSON**: Meets the requirement of using a non-JSON format.
 - **Embedded & Zero Config**: Built directly into Python (`sqlite3`), making it highly portable.
 - **Transactional Safety**: Protects data integrity during command executions.
 - **Relational Capabilities**: Allows joins between assets, transactions, and snapshots for accurate financial reporting.
 
 ### XDG Directory Compliance
-MonetRack stores its data in the standard XDG data directory:
+MoneTrack stores its data in the standard XDG data directory:
 - **Default Path**: `~/.local/share/monetrack/monetrack.db`
 - The directory is initialized automatically if it doesn't exist.
 

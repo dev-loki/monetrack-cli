@@ -1,4 +1,4 @@
-// MonetRack Dashboard Controller
+// MoneTrack Dashboard Controller
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- State & Constants ---
