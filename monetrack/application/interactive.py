@@ -58,7 +58,10 @@ def build_completer(service: PortfolioService) -> NestedCompleter:
                 "rename": asset_names,
                 "archive": asset_names,
                 "unarchive": asset_names,
+                "update": asset_names,
             },
+            "update-transaction": None,
+            "update-snapshot": None,
             "import": None,
             "export": None,
             "help": None,
@@ -116,7 +119,7 @@ def interactive_shell(service: PortfolioService, app: typer.Typer) -> None:
             if args[0] == "import" or (
                 len(args) >= 2
                 and args[0] == "asset"
-                and args[1] in ["create", "delete", "archive", "unarchive", "rename"]
+                and args[1] in ["create", "delete", "archive", "unarchive", "rename", "update"]
             ):
                 session.completer = build_completer(service)
         except click.exceptions.Exit:

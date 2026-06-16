@@ -103,13 +103,13 @@ def test_interactive_shell_completer_refresh(portfolio_service: PortfolioService
     def asset_cmd(sub: str):
         pass
 
-    prompts = ["import", "asset create", "exit"]
+    prompts = ["import", "asset create", "asset update", "exit"]
     # Verify it builds completer on refresh events
     with patch("prompt_toolkit.PromptSession.prompt", side_effect=prompts):
         with patch("monetrack.application.interactive.build_completer") as mock_build:
             interactive_shell(portfolio_service, app)
-            # The completer is built initially + refreshed 2 times = 3 calls
-            assert mock_build.call_count == 3
+            # The completer is built initially + refreshed 3 times = 4 calls
+            assert mock_build.call_count == 4
 
 
 def test_interactive_shell_special_inputs(portfolio_service: PortfolioService) -> None:

@@ -106,6 +106,36 @@ class PortfolioService:
     def get_history(self, asset_id: int | None = None, event_type: str | None = None) -> list[HistoryEvent]:
         return self.db.get_history(asset_id=asset_id, event_type=event_type)
 
+    def update_asset(
+        self,
+        asset_id: int,
+        name: str | None = None,
+        type: str | None = None,
+        isin: str | None = None,
+        wkn: str | None = None,
+        comment: str | None = None,
+    ) -> None:
+        self.db.update_asset(asset_id, name, type, isin, wkn, comment)
+
+    def update_transaction(
+        self,
+        tx_id: int,
+        amount: float | None = None,
+        timestamp: str | None = None,
+        comment: str | None = None,
+        type: str | None = None,
+    ) -> None:
+        self.db.update_transaction(tx_id, amount, timestamp, comment, type)
+
+    def update_snapshot(
+        self,
+        snap_id: int,
+        value: float | None = None,
+        timestamp: str | None = None,
+        comment: str | None = None,
+    ) -> None:
+        self.db.update_snapshot(snap_id, value, timestamp, comment)
+
     def export_to_csv(self, export_dir: Path) -> None:
         """Export database data to CSV files in the specified directory."""
         export_dir.mkdir(parents=True, exist_ok=True)

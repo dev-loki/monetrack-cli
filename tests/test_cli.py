@@ -287,6 +287,9 @@ def test_cli_none_asset_id() -> None:
         res = runner.invoke(app, ["asset", "unarchive", "Mock"])
         assert res.exit_code == 1
 
+        res = runner.invoke(app, ["asset", "update", "Mock", "--name", "New"])
+        assert res.exit_code == 1
+
         res = runner.invoke(app, ["invest", "Mock", "100"])
         assert res.exit_code == 1
 
@@ -348,6 +351,73 @@ def test_cli_stats_details() -> None:
     runner.invoke(app, ["stats", "-b", "type", "-a", "Stock1"])
     runner.invoke(app, ["history", "-a", "Stock1"])
     runner.invoke(app, ["history", "-t", "invalidtype"])
+
+
+def test_cli_update_operations() -> None:
+    from unittest.mock import patch
+
+    # Create asset
+    runner.invoke(app, ["asset", "create", "Stock1", "-t", "stock"])
+
+    # 1. asset update success
+    res = runner.invoke(
+        app, ["asset", "update", "Stock1", "-n", "Stock2", "-t", "etf", "-i", "IE1", "-w", "W1", "-c", "comm"]
+    )
+    assert res.exit_code == 0
+    assert "Success: Updated asset" in res.output
+
+    # asset update invalid type
+    res = runner.invoke(app, ["asset", "update", "Stock2", "-t", "wrongtype"])
+    assert res.exit_code == 1
+    assert "Error: Invalid type" in res.output
+
+    # asset update failure (exception)
+    with patch("monetrack.application.cli.service.update_asset", side_effect=Exception("DB error")):
+        res = runner.invoke(app, ["asset", "update", "Stock2", "-n", "Stock3"])
+        assert res.exit_code == 1
+        assert "Error updating asset" in res.output
+
+    # 2. update-transaction success
+    runner.invoke(app, ["invest", "Stock2", "100.0"])
+    res = runner.invoke(
+        app,
+        ["update-transaction", "1", "-a", "120.0", "-d", "2025-01-01", "-c", "txcomment", "-t", "withdraw"],
+    )
+    assert res.exit_code == 0
+    assert "Success: Updated transaction ID 1" in res.output
+
+    # update-transaction invalid type
+    res = runner.invoke(app, ["update-transaction", "1", "-t", "invalid"])
+    assert res.exit_code == 1
+    assert "Error: Invalid type" in res.output
+
+    # update-transaction invalid date
+    res = runner.invoke(app, ["update-transaction", "1", "-d", "invalid-date"])
+    assert res.exit_code == 1
+    assert "Error: Invalid date format" in res.output
+
+    # update-transaction failure (exception)
+    with patch("monetrack.application.cli.service.update_transaction", side_effect=Exception("DB error")):
+        res = runner.invoke(app, ["update-transaction", "1", "-a", "200.0"])
+        assert res.exit_code == 1
+        assert "Error updating transaction" in res.output
+
+    # 3. update-snapshot success
+    runner.invoke(app, ["snapshot", "Stock2", "150.0"])
+    res = runner.invoke(app, ["update-snapshot", "1", "-v", "160.0", "-d", "2025-01-02", "-c", "snapcomment"])
+    assert res.exit_code == 0
+    assert "Success: Updated snapshot ID 1" in res.output
+
+    # update-snapshot invalid date
+    res = runner.invoke(app, ["update-snapshot", "1", "-d", "invalid-date"])
+    assert res.exit_code == 1
+    assert "Error: Invalid date format" in res.output
+
+    # update-snapshot failure (exception)
+    with patch("monetrack.application.cli.service.update_snapshot", side_effect=Exception("DB error")):
+        res = runner.invoke(app, ["update-snapshot", "1", "-v", "200.0"])
+        assert res.exit_code == 1
+        assert "Error updating snapshot" in res.output
 
 
 def test_cli_run_as_main() -> None:

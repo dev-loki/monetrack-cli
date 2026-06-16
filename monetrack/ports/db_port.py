@@ -73,6 +73,39 @@ class DatabasePort(Protocol):
         """Get chronological transaction and snapshot history."""
         ...
 
+    def update_asset(
+        self,
+        asset_id: int,
+        name: str | None = None,
+        type: str | None = None,
+        isin: str | None = None,
+        wkn: str | None = None,
+        comment: str | None = None,
+    ) -> None:
+        """Update an existing asset's details."""
+        ...
+
+    def update_transaction(
+        self,
+        tx_id: int,
+        amount: float | None = None,
+        timestamp: str | None = None,
+        comment: str | None = None,
+        type: str | None = None,
+    ) -> None:
+        """Update an existing transaction."""
+        ...
+
+    def update_snapshot(
+        self,
+        snap_id: int,
+        value: float | None = None,
+        timestamp: str | None = None,
+        comment: str | None = None,
+    ) -> None:
+        """Update an existing snapshot."""
+        ...
+
     def get_raw_connection(self) -> sqlite3.Connection:
         """Return raw database connection for transactions/migrations."""
         ...

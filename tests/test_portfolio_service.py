@@ -109,3 +109,20 @@ def test_service_export_and_import(portfolio_service: PortfolioService, tmp_path
     import_stats_again = portfolio_service.import_from_csv(export_dir)
     assert import_stats_again["assets"] == 0  # no new asset created
     assert import_stats_again["transactions"] == 1  # tx imported again
+
+
+def test_service_update_operations(portfolio_service: PortfolioService) -> None:
+    a_id = portfolio_service.create_asset(name="Old Asset", asset_type="stock")
+    tx_id = portfolio_service.add_transaction(a_id, "invest", 100.0, "2025-01-01")
+    snap_id = portfolio_service.add_snapshot(a_id, 105.0, "2025-01-02")
+
+    portfolio_service.update_asset(a_id, name="New Asset")
+    portfolio_service.update_transaction(tx_id, amount=150.0)
+    portfolio_service.update_snapshot(snap_id, value=160.0)
+
+    found = portfolio_service.find_asset("New Asset")
+    assert found is not None
+
+    stats = portfolio_service.get_asset_stats(a_id)
+    assert stats.net_invested == 150.0
+    assert stats.current_value == 160.0

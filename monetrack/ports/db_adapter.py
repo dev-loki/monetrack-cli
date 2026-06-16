@@ -601,5 +601,99 @@ class SQLiteDatabaseAdapter:
                 for row in rows
             ]
 
+    def update_asset(
+        self,
+        asset_id: int,
+        name: str | None = None,
+        type: str | None = None,
+        isin: str | None = None,
+        wkn: str | None = None,
+        comment: str | None = None,
+    ) -> None:
+        updates = []
+        params = []
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if type is not None:
+            updates.append("type = ?")
+            params.append(type)
+        if isin is not None:
+            updates.append("isin = ?")
+            params.append(isin if isin != "" else None)
+        if wkn is not None:
+            updates.append("wkn = ?")
+            params.append(wkn if wkn != "" else None)
+        if comment is not None:
+            updates.append("comment = ?")
+            params.append(comment if comment != "" else None)
+
+        if not updates:
+            return
+
+        params.append(asset_id)
+        with self.get_connection() as conn:
+            conn.execute(f"UPDATE assets SET {', '.join(updates)} WHERE id = ?", tuple(params))
+
+    def update_transaction(
+        self,
+        tx_id: int,
+        amount: float | None = None,
+        timestamp: str | None = None,
+        comment: str | None = None,
+        type: str | None = None,
+    ) -> None:
+        updates = []
+        params = []
+        if amount is not None:
+            updates.append("amount = ?")
+            params.append(amount)
+        if timestamp is not None:
+            updates.append("timestamp = ?")
+            params.append(timestamp)
+        if comment is not None:
+            updates.append("comment = ?")
+            params.append(comment if comment != "" else None)
+        if type is not None:
+            updates.append("type = ?")
+            params.append(type)
+
+        if not updates:
+            return
+
+        params.append(tx_id)
+        with self.get_connection() as conn:
+            res = conn.execute(f"UPDATE transactions SET {', '.join(updates)} WHERE id = ?", tuple(params))
+            if res.rowcount == 0:
+                raise ValueError(f"Transaction with ID {tx_id} not found.")
+
+    def update_snapshot(
+        self,
+        snap_id: int,
+        value: float | None = None,
+        timestamp: str | None = None,
+        comment: str | None = None,
+    ) -> None:
+        updates = []
+        params = []
+        if value is not None:
+            updates.append("value = ?")
+            params.append(value)
+        if timestamp is not None:
+            updates.append("timestamp = ?")
+            params.append(timestamp)
+        if comment is not None:
+            updates.append("comment = ?")
+            params.append(comment if comment != "" else None)
+
+        if not updates:
+            return
+
+        params.append(snap_id)
+        with self.get_connection() as conn:
+            res = conn.execute(f"UPDATE snapshots SET {', '.join(updates)} WHERE id = ?", tuple(params))
+            if res.rowcount == 0:
+                raise ValueError(f"Snapshot with ID {snap_id} not found.")
+
     def get_raw_connection(self) -> sqlite3.Connection:
         return self.get_connection()

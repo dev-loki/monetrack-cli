@@ -205,6 +205,36 @@ def asset_unarchive(asset_query: str = typer.Argument(..., help="Asset ID, Name,
         raise typer.Exit(code=1) from e
 
 
+@asset_app.command(name="update")
+def asset_update(
+    asset_query: str = typer.Argument(..., help="Asset ID, Name, ISIN, or WKN to update"),
+    name: str | None = typer.Option(None, "--name", "-n", help="New name for the asset"),
+    type: str | None = typer.Option(None, "--type", "-t", help="New type for the asset"),
+    isin: str | None = typer.Option(None, "--isin", "-i", help="New ISIN for the asset (use empty string to clear)"),
+    wkn: str | None = typer.Option(None, "--wkn", "-w", help="New WKN for the asset (use empty string to clear)"),
+    comment: str | None = typer.Option(
+        None, "--comment", "-c", help="New comment for the asset (use empty string to clear)"
+    ),
+):
+    """Update an existing asset's fields."""
+    asset = resolve_asset_or_exit(asset_query)
+    if asset.id is None:
+        raise typer.Exit(code=1)
+
+    if type is not None:
+        valid_types = ["p2p", "stock", "etf", "crypto", "other"]
+        if type.lower() not in valid_types:
+            rprint(f"[red]Error: Invalid type '{type}'. Must be one of: {', '.join(valid_types)}[/red]")
+            raise typer.Exit(code=1)
+
+    try:
+        service.update_asset(asset.id, name, type, isin, wkn, comment)
+        rprint(f"[green]Success: Updated asset '{asset.name}'[/green]")
+    except Exception as e:
+        rprint(f"[red]Error updating asset: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
 # --- Transaction & Snapshot Commands ---
 
 
@@ -287,6 +317,52 @@ def snapshot(
         )
     except Exception as e:
         rprint(f"[red]Error: Could not record snapshot. {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@app.command(name="update-transaction")
+def update_transaction(
+    tx_id: int = typer.Argument(..., help="ID of the transaction to update"),
+    amount: float | None = typer.Option(None, "--amount", "-a", min=0.01, help="New transaction amount"),
+    date: str | None = typer.Option(None, "--date", "-d", help="New date of transaction (YYYY-MM-DD)"),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="New comment (use empty string to clear)"),
+    type: str | None = typer.Option(None, "--type", "-t", help="New type (invest or withdraw)"),
+):
+    """Update an existing transaction (investment or withdrawal)."""
+    tx_date = None
+    if date is not None:
+        tx_date = validate_date_or_exit(date)
+
+    if type is not None:
+        if type.lower() not in ["invest", "withdraw"]:
+            rprint(f"[red]Error: Invalid type '{type}'. Must be 'invest' or 'withdraw'[/red]")
+            raise typer.Exit(code=1)
+
+    try:
+        service.update_transaction(tx_id, amount, tx_date, comment, type)
+        rprint(f"[green]Success: Updated transaction ID {tx_id}[/green]")
+    except Exception as e:
+        rprint(f"[red]Error updating transaction: {e!s}[/red]")
+        raise typer.Exit(code=1) from e
+
+
+@app.command(name="update-snapshot")
+def update_snapshot(
+    snap_id: int = typer.Argument(..., help="ID of the snapshot to update"),
+    value: float | None = typer.Option(None, "--value", "-v", min=0.0, help="New snapshot value"),
+    date: str | None = typer.Option(None, "--date", "-d", help="New date of snapshot (YYYY-MM-DD)"),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="New comment (use empty string to clear)"),
+):
+    """Update an existing valuation snapshot."""
+    snap_date = None
+    if date is not None:
+        snap_date = validate_date_or_exit(date)
+
+    try:
+        service.update_snapshot(snap_id, value, snap_date, comment)
+        rprint(f"[green]Success: Updated snapshot ID {snap_id}[/green]")
+    except Exception as e:
+        rprint(f"[red]Error updating snapshot: {e!s}[/red]")
         raise typer.Exit(code=1) from e
 
 

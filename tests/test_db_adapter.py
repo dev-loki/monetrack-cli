@@ -272,3 +272,77 @@ def test_db_adapter_monthly_stats_scenarios(db_adapter: SQLiteDatabaseAdapter) -
     monthly_archived = db_adapter.get_monthly_stats(include_archived=True)
     assert len(monthly_archived) >= 1
     assert monthly_archived[0].earnings == 10.0
+
+
+def test_db_adapter_update_operations(db_adapter: SQLiteDatabaseAdapter) -> None:
+    # 1. Update Asset
+    a_id = db_adapter.create_asset(
+        Asset(id=None, name="Old Name", type="stock", isin="ISIN1", wkn="WKN1", comment="Old comment")
+    )
+    db_adapter.update_asset(a_id, name="New Name", type="etf", isin="ISIN2", wkn="WKN2", comment="New comment")
+    found = db_adapter.find_asset("New Name")
+    assert found is not None
+    assert found.type == "etf"
+    assert found.isin == "ISIN2"
+    assert found.wkn == "WKN2"
+    assert found.comment == "New comment"
+
+    # Test clearing values
+    db_adapter.update_asset(a_id, isin="", wkn="", comment="")
+    found_cleared = db_adapter.find_asset("New Name")
+    assert found_cleared is not None
+    assert found_cleared.isin is None
+    assert found_cleared.wkn is None
+    assert found_cleared.comment is None
+
+    # Test empty update does nothing
+    db_adapter.update_asset(a_id)
+
+    # 2. Update Transaction
+    tx = Transaction(id=None, asset_id=a_id, timestamp="2025-01-01", type="invest", amount=100.0, comment="tx")
+    tx_id = db_adapter.add_transaction(tx)
+    db_adapter.update_transaction(tx_id, amount=120.0, timestamp="2025-01-02", comment="new tx", type="withdraw")
+
+    with db_adapter.get_connection() as conn:
+        row = conn.execute("SELECT * FROM transactions WHERE id = ?", (tx_id,)).fetchone()
+        assert row["amount"] == 120.0
+        assert row["timestamp"] == "2025-01-02"
+        assert row["comment"] == "new tx"
+        assert row["type"] == "withdraw"
+
+    # Test clearing comment
+    db_adapter.update_transaction(tx_id, comment="")
+    with db_adapter.get_connection() as conn:
+        row = conn.execute("SELECT * FROM transactions WHERE id = ?", (tx_id,)).fetchone()
+        assert row["comment"] is None
+
+    # Test empty update
+    db_adapter.update_transaction(tx_id)
+
+    # Test non-existent transaction
+    with pytest.raises(ValueError, match="Transaction with ID 9999 not found"):
+        db_adapter.update_transaction(9999, amount=50.0)
+
+    # 3. Update Snapshot
+    snap = Snapshot(id=None, asset_id=a_id, timestamp="2025-01-01", value=100.0, comment="snap")
+    snap_id = db_adapter.add_snapshot(snap)
+    db_adapter.update_snapshot(snap_id, value=110.0, timestamp="2025-01-02", comment="new snap")
+
+    with db_adapter.get_connection() as conn:
+        row = conn.execute("SELECT * FROM snapshots WHERE id = ?", (snap_id,)).fetchone()
+        assert row["value"] == 110.0
+        assert row["timestamp"] == "2025-01-02"
+        assert row["comment"] == "new snap"
+
+    # Test clearing comment
+    db_adapter.update_snapshot(snap_id, comment="")
+    with db_adapter.get_connection() as conn:
+        row = conn.execute("SELECT * FROM snapshots WHERE id = ?", (snap_id,)).fetchone()
+        assert row["comment"] is None
+
+    # Test empty update
+    db_adapter.update_snapshot(snap_id)
+
+    # Test non-existent snapshot
+    with pytest.raises(ValueError, match="Snapshot with ID 9999 not found"):
+        db_adapter.update_snapshot(9999, value=50.0)
