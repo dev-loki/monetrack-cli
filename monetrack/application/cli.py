@@ -13,7 +13,7 @@ from monetrack.application.formatters import (
     render_vertical_bar_chart,
 )
 from monetrack.application.interactive import interactive_shell
-from monetrack.domain.models import Asset
+from monetrack.domain.models import Asset, HistoryEventType
 from monetrack.ports.db_adapter import SQLiteDatabaseAdapter
 from monetrack.services.portfolio_service import PortfolioService
 
@@ -461,14 +461,14 @@ def history(
     table.add_column("Comment", style="dim")
 
     for ev in events:
-        match ev.event_type.upper():
-            case "INVEST":
+        match ev.event_type:
+            case HistoryEventType.INVEST:
                 ev_type_formatted = "[green]INVEST[/green]"
                 val_formatted = f"[green]€{ev.value:,.2f}[/green]"
-            case "WITHDRAW":
+            case HistoryEventType.WITHDRAW:
                 ev_type_formatted = "[red]WITHDRAW[/red]"
                 val_formatted = f"[red]€{ev.value:,.2f}[/red]"
-            case _:
+            case HistoryEventType.SNAPSHOT:
                 ev_type_formatted = "[yellow]SNAPSHOT[/yellow]"
                 val_formatted = f"€{ev.value:,.2f}"
 

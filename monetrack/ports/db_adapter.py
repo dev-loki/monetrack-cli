@@ -8,6 +8,8 @@ from monetrack.domain.models import (
     Asset,
     AssetType,
     HistoryEvent,
+    HistoryEventSource,
+    HistoryEventType,
     Snapshot,
     Transaction,
     TransactionType,
@@ -297,10 +299,10 @@ class SQLiteDatabaseAdapter(DatabasePort):
             rows = conn.execute(query, params).fetchall()
             return [
                 HistoryEvent(
-                    source=row["source"],
+                    source=HistoryEventSource(row["source"]),
                     id=row["event_id"],
                     timestamp=row["timestamp"],
-                    event_type=row["event_type"],
+                    event_type=HistoryEventType(row["event_type"]),
                     value=row["value"],
                     comment=row["comment"] or "",
                     asset_name=row["asset_name"],

@@ -5,7 +5,15 @@ from unittest.mock import patch
 
 import pytest
 
-from monetrack.domain.models import Asset, AssetType, Snapshot, Transaction, TransactionType
+from monetrack.domain.models import (
+    Asset,
+    AssetType,
+    HistoryEventSource,
+    HistoryEventType,
+    Snapshot,
+    Transaction,
+    TransactionType,
+)
 from monetrack.ports.db_adapter import SQLiteDatabaseAdapter
 from monetrack.services.portfolio_service import PortfolioService
 
@@ -235,13 +243,13 @@ def test_get_history(db_adapter: SQLiteDatabaseAdapter) -> None:
     assert len(hist_asset) == 2
 
     # Filter by event type
-    hist_snap = db_adapter.get_history(event_type="snapshot")
+    hist_snap = db_adapter.get_history(event_type=HistoryEventType.SNAPSHOT)
     assert len(hist_snap) == 1
-    assert hist_snap[0].source == "snapshot"
+    assert hist_snap[0].source == HistoryEventSource.SNAPSHOT
 
     hist_invest = db_adapter.get_history(event_type=TransactionType.INVEST)
     assert len(hist_invest) == 1
-    assert hist_invest[0].source == "transaction"
+    assert hist_invest[0].source == HistoryEventSource.TRANSACTION
 
 
 def test_db_adapter_none_asset_id(portfolio_service: PortfolioService) -> None:

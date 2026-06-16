@@ -15,6 +15,17 @@ class TransactionType(StrEnum):
     WITHDRAW = "withdraw"
 
 
+class HistoryEventSource(StrEnum):
+    TRANSACTION = "transaction"
+    SNAPSHOT = "snapshot"
+
+
+class HistoryEventType(StrEnum):
+    INVEST = "invest"
+    WITHDRAW = "withdraw"
+    SNAPSHOT = "snapshot"
+
+
 @dataclass(slots=True)
 class Asset:
     id: int | None
@@ -80,10 +91,10 @@ class MonthlyStats:
 
 @dataclass(slots=True)
 class HistoryEvent:
-    source: str  # 'transaction' or 'snapshot'
+    source: HistoryEventSource
     id: int
     timestamp: str
-    event_type: str  # invest, withdraw, snapshot
+    event_type: HistoryEventType
     value: float
     comment: str
     asset_name: str
